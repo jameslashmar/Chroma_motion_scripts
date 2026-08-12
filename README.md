@@ -22,11 +22,15 @@ The `aftereffects/` tree mirrors After Effects' own layout, so installing is a s
 
 Creates a run of numbered shot bins in the Project panel — `SHOT001` … `SHOT010` — from a prefix, zero-padding, start number, step and count.
 
+<img src="docs/images/create-shot-folders.png" alt="Create Shot Folders dialog, showing prefix, padding, start number, step and count fields above a live preview reading SHOT001 … SHOT010" width="344">
+
 The step is there for edits that number in tens or twenties so there's room to insert later, and the padding is separate from the start number so `1` can render as `001` without typing leading zeros. A live preview shows the first and last name before you commit, which catches an off-by-one in the count before it becomes forty bins to delete. Optionally the whole run drops inside a parent bin, and the batch is a single undo step.
 
 ### `ScriptUI Panels/Chroma Purge After Render.jsx`
 
 Renders the render queue and purges caches after each item, so a long queue doesn't degrade as memory and the disk cache fill up.
+
+<img src="docs/images/chroma-purge-after-render.png" alt="Chroma Purge After Render panel docked in After Effects, with cache checkboxes, the two render modes, and the disk cache section showing a resolved path of D:\AeCache" width="415">
 
 Two modes, because they trade against each other:
 
