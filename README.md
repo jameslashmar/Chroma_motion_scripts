@@ -1,19 +1,66 @@
-# Chroma_C4D_scripts
+# Chroma Motion Scripts for C4D & AFX
 
-A collection of scripts — written by hand or with AI assistance — to automate Windows, Deadline, and repetitive tasks in Cinema 4D.
+A collection of scripts — written by hand or with AI assistance — to automate After Effects and Cinema 4D, and the repetitive Windows and Deadline tasks around them.
 
 Everything here is small and self-contained. The scripts are meant to be dropped straight into a script folder or double-clicked; the one plugin is the exception and installs properly.
 
 ```
-cinema4d/   Python scripts, run from Extensions → User Scripts
-windows/    batch and command files, double-click to run
-plugins/    installs to the C4D plugins folder, not library\scripts
-docs/       API notes worth reading before writing new C4D tooling
+aftereffects/   ExtendScript, copied into After Effects' own script folders
+cinema4d/       Python scripts, run from Extensions → User Scripts
+windows/        batch and command files, double-click to run
+plugins/        installs to the C4D plugins folder, not library\scripts
+docs/           API notes worth reading before writing new tooling
 ```
 
 ---
 
-## `cinema4d/` — Cinema 4D scripts (Python)
+## After Effects
+
+The `aftereffects/` tree mirrors After Effects' own layout, so installing is a straight copy of both folders. `Scripts/` holds things you run once from the File menu; `ScriptUI Panels/` holds dockable panels that live in the Window menu.
+
+### `Scripts/CreateShotFolders.jsx`
+
+Creates a run of numbered shot bins in the Project panel — `SHOT001` … `SHOT010` — from a prefix, zero-padding, start number, step and count.
+
+The step is there for edits that number in tens or twenties so there's room to insert later, and the padding is separate from the start number so `1` can render as `001` without typing leading zeros. A live preview shows the first and last name before you commit, which catches an off-by-one in the count before it becomes forty bins to delete. Optionally the whole run drops inside a parent bin, and the batch is a single undo step.
+
+### `ScriptUI Panels/Chroma Purge After Render.jsx`
+
+Renders the render queue and purges caches after each item, so a long queue doesn't degrade as memory and the disk cache fill up.
+
+Two modes, because they trade against each other:
+
+- **One item at a time** — parks the queue, renders a single item, purges, repeats. The purge never lands while the render engine is mid-frame. Slightly slower, since each item pays its own `render()` startup.
+- **Whole queue** — hands everything to After Effects in one `render()` call and purges from each item's `onStatusChanged` callback. Faster between items, but the purge runs while AE is still inside the render.
+
+Memory caches, undo and snapshots go through `app.purge()`. The disk cache has no scripting API at all — Adobe never exposed the Empty Disk Cache button — so it is cleared by deleting the cached frames directly.
+
+That means the cache location matters, and it is nearly always moved off the default onto a fast scratch drive. The panel reads it from preferences at runtime rather than assuming a path. The preference key carries a version suffix that Adobe bumps between releases (`Folder 7` in 26.0), so it probes the range and takes the first hit; if resolution ever fails there's a **Set…** override that persists. The panel also measures the cache, and reveals the folder.
+
+Two constraints on deletion, which matter if the cache root is pointed somewhere populated: only files ending `.aecache` are removed, and only ones inside a `*.noindex` folder. Directories are never touched — After Effects reuses the empty `00`–`ff` buckets.
+
+Worth knowing before relying on it: deleting cached frames under a running After Effects leaves its cache index referencing frames that are gone. AE handles the miss by re-rendering, so nothing breaks, but it is not identical to the Preferences button. If the real goal is that a long queue shouldn't degrade at all, one `aerender` process per item is the stronger answer — the process exits and the OS reclaims everything, with nothing left to purge.
+
+Settings persist between sessions via `app.settings`.
+
+### Installing the After Effects scripts
+
+Copy the contents of `aftereffects/` into the matching folders inside the After Effects install:
+
+```
+Windows   C:\Program Files\Adobe\Adobe After Effects <ver>\Support Files\Scripts\
+macOS     /Applications/Adobe After Effects <ver>/Scripts/
+```
+
+Needs administrator rights on Windows. Scripts placed here survive After Effects updates.
+
+Restart After Effects afterwards. Panels then appear at the bottom of the **Window** menu; plain scripts under **File → Scripts**.
+
+`Chroma Purge After Render` needs **Preferences → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled before it can clear the disk cache. Everything else in it works without that.
+
+---
+
+## Cinema 4D
 
 Run from **Extensions → User Scripts**. See [Installing the Python scripts](#installing-the-python-scripts) below.
 
@@ -51,11 +98,11 @@ Not tools, but the instruments that worked the view transform out, kept because 
 
 `probe_xpresso_view.py` reads and writes zoom, view position and the root XGroup's position, reporting each separately so they can't be confused. `probe_xpresso_commands.py` enumerates every command plugin and logs which are enabled, which is how "XPresso registers no view commands at all" was established rather than assumed.
 
-## One at a time, not all at once
+### One at a time, not all at once
 
 The next two both exist for the same reason: **they apply an operation to each selected object individually, instead of treating the selection as one thing.** That's the difference between doing something fifty times and doing it once to fifty objects, and Cinema 4D gives you the second when you usually want the first.
 
-### `multiple-instances_from_multiple-selected.py`
+#### `multiple-instances_from_multiple-selected.py`
 
 An Instance of **every** selected object, one each, named `<original>_instance`.
 
@@ -66,17 +113,13 @@ Select fifty objects and you get fifty instances — not one instance of the fir
 - The whole batch is **one undo step**.
 - The selection is swapped to the new instances afterwards, so you can move them straight away.
 
-### `connect_&_delete_multiple_selected_objects.py`
+#### `connect_&_delete_multiple_selected_objects.py`
 
 **Connect Objects + Delete** run on each selected object individually, rather than merging the whole selection into one mesh.
 
 C4D's built-in command collapses a multi-object selection into a single object — which is right when you want one mesh, and wrong when you have fifty separate assemblies to flatten. This iterates instead: fifty selected nulls with children become fifty connected meshes, each keeping its own identity. `c4d.EventAdd()` fires once at the end so the Object Manager redraws cleanly.
 
----
-
-## `plugins/` — Plugins
-
-### `chroma_utilities/`
+### `plugins/chroma_utilities/`
 
 A background listener that starts with Cinema 4D and runs for the whole session — no button, nothing to launch. It does five things, each switchable on its own.
 
@@ -94,9 +137,21 @@ The three renamers only ever touch a name that's still the type default or one t
 
 Installs to `plugins\`, not `library\scripts\`. Ships as a compiled `.pypv`; the `.pyp` source is kept private.
 
+### Installing the Python scripts
+
+Drop the `.py` files from `cinema4d/` into your Cinema 4D script folder:
+
+```
+%APPDATA%\Maxon\Maxon Cinema 4D 2026_<hash>\library\scripts\
+```
+
+They appear under **Extensions → User Scripts**, where they can be bound to a keyboard shortcut or dragged onto a palette.
+
+Cinema 4D caches script files aggressively. If an edit doesn't appear to take effect, reload scripts or restart before assuming the change didn't save.
+
 ---
 
-## `windows/` — Windows / pipeline utilities
+## Windows
 
 Double-click to run. All of them prompt for their input, so there are no arguments to remember. `C4D_migration.bat` lives here rather than under `cinema4d/` because it's a Windows batch file that happens to move a C4D install around — nothing in it runs inside Cinema 4D.
 
@@ -128,21 +183,9 @@ Same, but suspends to standby instead of shutting down, via `powrprof.dll,SetSus
 
 ---
 
-## Installing the Python scripts
-
-Drop the `.py` files from `cinema4d/` into your Cinema 4D script folder:
-
-```
-%APPDATA%\Maxon\Maxon Cinema 4D 2026_<hash>\library\scripts\
-```
-
-They appear under **Extensions → User Scripts**, where they can be bound to a keyboard shortcut or dragged onto a palette.
-
-Cinema 4D caches script files aggressively. If an edit doesn't appear to take effect, reload scripts or restart before assuming the change didn't save.
-
----
-
 ## Compatibility
+
+The After Effects scripts were written against **After Effects 2026** using ExtendScript and the classic `app` API. They use only the `File`/`Folder` API for disk work — no shell calls and no platform branches — so they run on macOS and Windows alike. Anything version-dependent, notably the disk cache preference key, is probed at runtime rather than hardcoded.
 
 The XPresso scripts were written and tested against **Cinema 4D 2026 / Python 3.11**, using the classic `c4d` API and `c4d.modules.graphview`. Several API surfaces changed in ways that break older forum examples — those differences are documented in [docs/xpresso-api-notes.md](docs/xpresso-api-notes.md), which is worth reading before writing any new XPresso tooling.
 
