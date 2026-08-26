@@ -2,7 +2,7 @@
 
 Everything in this repo is free: small scripts for After Effects and Cinema 4D, and the Windows and Deadline tasks around them, written by hand or with AI assistance. If they save you time, please consider taking a look at our paid plugins on [aescripts](https://aescripts.com/authors/chroma/) and [store.chroma.london](https://store.chroma.london/):
 
-- [Gulp](https://aescripts.com/gulp/)
+- [Gulp - CGI shot builder for AFX](https://aescripts.com/gulp/)
 - [VoxMark](https://aescripts.com/voxmark/)
 - [VoxMark for Cinema 4D](https://store.chroma.london/l/tdkzz)
 - [Redshift Light Manager](https://store.chroma.london/l/zlizze)
