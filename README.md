@@ -47,6 +47,23 @@ Worth knowing before relying on it: deleting cached frames under a running After
 
 Settings persist between sessions via `app.settings`.
 
+### `ScriptUI Panels/Chroma Utilities.jsx`
+
+A dockable panel of small tools. Two so far.
+
+**Create Shot Folders** — the same dialog as `Scripts/CreateShotFolders.jsx`, one click away instead of down in File → Scripts. The code is embedded, so the panel is a single-file install with nothing to locate on disk.
+
+**Strip keys from duplicate, parent to original** — duplicate an animated layer, select the original and the duplicate, click a button. The duplicate loses its keyframes and is parented to the original, so it follows the original's animation rather than carrying its own copy of it. Five buttons: **Position**, **Rotation**, **Scale**, **PSR** (all three) and **All keyframes** (everything on the layer — effects, masks, text, shape contents, layer styles — but not markers, and expressions are left alone).
+
+The details that matter:
+
+- **Which layer is the original.** If the names differ only by a trailing number (`Hero` / `Hero 2`, `Shape Layer 1` / `Shape Layer 2`, `SHOT_010` / `SHOT_011`) the un-numbered or lowest-numbered one is the original. Otherwise it's the lowest selected layer in the stack, because Ctrl/Cmd+D puts the copy directly above its source. Hold **Alt** (Option) while clicking to swap. The status line says which way it went.
+- One original with several duplicates works — select them all.
+- Each stripped property holds its value at the current time, the same as switching the stopwatch off, so the duplicate keeps whatever pose it had when you clicked.
+- Parenting uses After Effects' own compensation (no jump), so the duplicate stays put on screen. After a full PSR strip its transform ends up relative to the original, which is the point.
+- Position covers separated X/Y/Z too; Rotation covers X/Y/Z and Orientation on 3D layers.
+- Every click is one undo step.
+
 ### Installing the After Effects scripts
 
 Copy the contents of `aftereffects/` into the matching folders inside the After Effects install:
