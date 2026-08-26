@@ -18,13 +18,34 @@ docs/           API notes worth reading before writing new tooling
 
 The `aftereffects/` tree mirrors After Effects' own layout, so installing is a straight copy of both folders. `Scripts/` holds things you run once from the File menu; `ScriptUI Panels/` holds dockable panels that live in the Window menu.
 
-### `Scripts/CreateShotFolders.jsx`
+### `ScriptUI Panels/Chroma Utilities.jsx`
+
+A dockable panel of small tools. Two so far.
+
+<img src="docs/images/chroma-utilities.png" alt="Chroma Utilities panel docked in After Effects: a Create Shot Folders button under Project, then Position, Rotation, Scale, PSR and All keyframes buttons under Strip keys from duplicate, parent to original, with a status line reading Shape Layer 2 → Shape Layer 1: 11 all keys removed, parented" width="621">
+
+#### Create Shot Folders
 
 Creates a run of numbered shot bins in the Project panel — `SHOT001` … `SHOT010` — from a prefix, zero-padding, start number, step and count.
 
 <img src="docs/images/create-shot-folders.png" alt="Create Shot Folders dialog, showing prefix, padding, start number, step and count fields above a live preview reading SHOT001 … SHOT010" width="344">
 
 The step is there for edits that number in tens or twenties so there's room to insert later, and the padding is separate from the start number so `1` can render as `001` without typing leading zeros. A live preview shows the first and last name before you commit, which catches an off-by-one in the count before it becomes forty bins to delete. Optionally the whole run drops inside a parent bin, and the batch is a single undo step.
+
+The same dialog ships standalone as `Scripts/CreateShotFolders.jsx` for File → Scripts. The panel embeds the code rather than looking for that file, so it's a single-file install with nothing to locate on disk.
+
+#### Strip keys from duplicate, parent to original
+
+Duplicate an animated layer, select the original and the duplicate, click a button. The duplicate loses its keyframes and is parented to the original, so it follows the original's animation rather than carrying its own copy of it. Five buttons: **Position**, **Rotation**, **Scale**, **PSR** (all three) and **All keyframes** (everything on the layer — effects, masks, text, shape contents, layer styles — but not markers, and expressions are left alone).
+
+The details that matter:
+
+- **Which layer is the original.** If the names differ only by a trailing number (`Hero` / `Hero 2`, `Shape Layer 1` / `Shape Layer 2`, `SHOT_010` / `SHOT_011`) the un-numbered or lowest-numbered one is the original. Otherwise it's the lowest selected layer in the stack, because Ctrl/Cmd+D puts the copy directly above its source. Hold **Alt** (Option) while clicking to swap. The status line says which way it went.
+- One original with several duplicates works — select them all.
+- Each stripped property holds its value at the current time, the same as switching the stopwatch off, so the duplicate keeps whatever pose it had when you clicked.
+- Parenting uses After Effects' own compensation (no jump), so the duplicate stays put on screen. After a full PSR strip its transform ends up relative to the original, which is the point.
+- Position covers separated X/Y/Z too; Rotation covers X/Y/Z and Orientation on 3D layers.
+- Every click is one undo step.
 
 ### `ScriptUI Panels/Chroma Purge After Render.jsx`
 
@@ -46,23 +67,6 @@ Two constraints on deletion, which matter if the cache root is pointed somewhere
 Worth knowing before relying on it: deleting cached frames under a running After Effects leaves its cache index referencing frames that are gone. AE handles the miss by re-rendering, so nothing breaks, but it is not identical to the Preferences button. If the real goal is that a long queue shouldn't degrade at all, one `aerender` process per item is the stronger answer — the process exits and the OS reclaims everything, with nothing left to purge.
 
 Settings persist between sessions via `app.settings`.
-
-### `ScriptUI Panels/Chroma Utilities.jsx`
-
-A dockable panel of small tools. Two so far.
-
-**Create Shot Folders** — the same dialog as `Scripts/CreateShotFolders.jsx`, one click away instead of down in File → Scripts. The code is embedded, so the panel is a single-file install with nothing to locate on disk.
-
-**Strip keys from duplicate, parent to original** — duplicate an animated layer, select the original and the duplicate, click a button. The duplicate loses its keyframes and is parented to the original, so it follows the original's animation rather than carrying its own copy of it. Five buttons: **Position**, **Rotation**, **Scale**, **PSR** (all three) and **All keyframes** (everything on the layer — effects, masks, text, shape contents, layer styles — but not markers, and expressions are left alone).
-
-The details that matter:
-
-- **Which layer is the original.** If the names differ only by a trailing number (`Hero` / `Hero 2`, `Shape Layer 1` / `Shape Layer 2`, `SHOT_010` / `SHOT_011`) the un-numbered or lowest-numbered one is the original. Otherwise it's the lowest selected layer in the stack, because Ctrl/Cmd+D puts the copy directly above its source. Hold **Alt** (Option) while clicking to swap. The status line says which way it went.
-- One original with several duplicates works — select them all.
-- Each stripped property holds its value at the current time, the same as switching the stopwatch off, so the duplicate keeps whatever pose it had when you clicked.
-- Parenting uses After Effects' own compensation (no jump), so the duplicate stays put on screen. After a full PSR strip its transform ends up relative to the original, which is the point.
-- Position covers separated X/Y/Z too; Rotation covers X/Y/Z and Orientation on 3D layers.
-- Every click is one undo step.
 
 ### Installing the After Effects scripts
 
