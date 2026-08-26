@@ -2,6 +2,19 @@
 
 A collection of scripts — written by hand or with AI assistance — to automate After Effects and Cinema 4D, and the repetitive Windows and Deadline tasks around them.
 
+The scripts live here. The plugins are on **[aescripts.com/authors/chroma](https://aescripts.com/authors/chroma/)** and **[store.chroma.london](https://store.chroma.london/)** (Gumroad):
+
+| Plugin | App | |
+| --- | --- | --- |
+| [Gulp](https://aescripts.com/gulp/) | After Effects | Media browser and CGI shot builder for multipass and traditional media — browse thousands of files fast, rebuild a beauty from its passes in seconds, relink missing files. |
+| [VoxMark](https://aescripts.com/voxmark/) ([store](https://store.chroma.london/l/bphpj)) | After Effects, Premiere Pro | Turns a voiceover into frame-accurate markers and subtitles in one click — renders the comp's audio mix, transcribes it with the AI provider of your choice, drops the result on the timeline. |
+| [VoxMark for Cinema 4D](https://store.chroma.london/l/tdkzz) | Cinema 4D | The same for C4D — renders the scene audio, transcribes it, drops the result as timeline markers. |
+| [Redshift Light Manager](https://store.chroma.london/l/zlizze) | Cinema 4D | Every scene light in one place, from creation through lookdev to light AOVs. |
+| [Redshift ID Manager](https://store.chroma.london/l/vgwstr) | Cinema 4D | Object and Material IDs from a dockable, native tab-bar panel. |
+| [Octane to Redshift Converter](https://store.chroma.london/l/oeziqg) | Cinema 4D | Converts an Octane scene to Redshift. |
+| [SuperSolo](https://store.chroma.london/l/lxhbxy) | Cinema 4D | Free. Isolates the active selection in the viewport and Object Manager with one click, then gets out of the way. |
+| [Mega Bundle](https://store.chroma.london/l/bjczda) | All | Every plugin above, with one of them free. |
+
 Everything here is small and self-contained. The scripts are meant to be dropped straight into a script folder or double-clicked; the one plugin is the exception and installs properly.
 
 ```
