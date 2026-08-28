@@ -17,13 +17,14 @@
  *
  * Failures come up as dialogs; success is silent.
  *
- * Every button here is a plain ScriptUI button, including the two with
- * pictures on them. A ScriptUI "iconbutton" is not an option: After Effects
- * draws it as a circle whatever size you ask for, so a row mixing the two
- * widgets comes out half round and half square. Instead the icon buttons
- * override onDraw, ask the OS to paint the ordinary button frame with
- * drawOSControl(), and draw the image over the top -- same widget, same
- * frame, same press feedback, with a picture in the middle.
+ * All six buttons are drawn by one function, so they cannot drift apart.
+ * After Effects leaves no way to have it draw them: a ScriptUI "iconbutton"
+ * comes out round whatever size it is given, and graphics.drawOSControl() --
+ * the documented way to ask for the native frame underneath a custom onDraw
+ * -- silently paints nothing here, which is why the icon buttons had no
+ * frame and no rollover. So the frame, the rollover and the pressed state
+ * are drawn by hand, in colours sampled from After Effects itself and scaled
+ * to whatever UI brightness is set.
  *
  * The icons are embedded as PNG bytes rather than kept beside the script,
  * so this stays a single-file install. Icons: Royyan Wijaya, The Noun
@@ -480,34 +481,180 @@
 
     // ---------------------------------------------------------------------- UI
 
-    // Square, and big enough for a 20px icon inside a button frame or for
-    // "PSR" at the default font.
+    // Square, and big enough for a 20px icon inside a frame or for "PSR".
     var BUTTON_SIZE = 30;
+    var CORNER_RADIUS = 3;
+
+    /**
+     * After Effects 2026, default UI brightness, sampled off a screenshot of
+     * this panel: the dock is #1d1d1d, a button face is #0e0e0e and its
+     * border #303030, with lettering around #b0b0b0. Everything is expressed
+     * as a multiple of the dock colour so that a different UI brightness --
+     * the Appearance slider in Preferences -- carries the buttons with it,
+     * when the background can be read back at all.
+     */
+    var BASE_BACKGROUND = 29 / 255;
+    var FACE_RATIO = 14 / 29;
+    var BORDER_RATIO = 48 / 29;
+    var TEXT_RATIO = 176 / 29;
+
+    // Hover and pressed are the same face, lifted. AE lightens the border on
+    // hover and the whole face on press.
+    var HOVER_BORDER_LIFT = 1.9;
+    var DOWN_FACE_LIFT = 2.6;
 
     var TOOL_SUFFIX = " from the duplicate, then parent it to the original. " +
         "Select the original and its duplicate(s) first; Alt-click to swap.";
 
+    function clamp01(value) {
+        if (value < 0) return 0;
+        if (value > 1) return 1;
+        return value;
+    }
+
+    function grey(level) {
+        var v = clamp01(level);
+        return [v, v, v, 1];
+    }
+
     /**
-     * Paint an image in the middle of an otherwise ordinary button.
-     *
-     * drawOSControl() hands the frame back to the platform, so the button is
-     * drawn exactly as its lettered neighbours are, in whatever UI brightness
-     * After Effects is set to, pressed and disabled states included. If a
-     * build has no drawOSControl the catch leaves the frame unpainted rather
-     * than inventing colours that would not match; the image still draws, so
-     * the button is still usable and still says what it does.
+     * The dock's background as a 0..1 grey, so the button palette can be
+     * derived from it. Falls back to the sampled default when ScriptUI will
+     * not report a colour, which is the common case.
      */
-    function drawIconOnButton() {
-        var g = this.graphics;
+    function backgroundLevel(win) {
         try {
-            g.drawOSControl();
+            var bg = win.graphics.backgroundColor;
+            if (bg && bg.color && bg.color.length >= 3) {
+                var level = (bg.color[0] + bg.color[1] + bg.color[2]) / 3;
+                // A reported black or white is ScriptUI declining to answer
+                // rather than a real dock colour; don't build a palette on it.
+                if (level > 0.02 && level < 0.98) return level;
+            }
         } catch (e) {}
-        var img = this.chromaImage;
-        if (!img) return;
+        return BASE_BACKGROUND;
+    }
+
+    /**
+     * Trace a rounded rectangle. ScriptUI's path API has lines and nothing
+     * else, so each corner is a short fan of segments; at a 3px radius four
+     * of them per corner is already indistinguishable from an arc.
+     */
+    function roundRectPath(g, x, y, w, h, r) {
+        var pts = [];
+        var segments = 4;
+        var corners = [
+            [x + w - r, y + r, -Math.PI / 2, 0],           // top right
+            [x + w - r, y + h - r, 0, Math.PI / 2],        // bottom right
+            [x + r, y + h - r, Math.PI / 2, Math.PI],      // bottom left
+            [x + r, y + r, Math.PI, Math.PI * 1.5]         // top left
+        ];
+        for (var c = 0; c < corners.length; c++) {
+            var cx = corners[c][0], cy = corners[c][1];
+            var a0 = corners[c][2], a1 = corners[c][3];
+            for (var i = 0; i <= segments; i++) {
+                var a = a0 + (a1 - a0) * (i / segments);
+                pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+            }
+        }
+        g.newPath();
+        g.moveTo(pts[0][0], pts[0][1]);
+        for (var p = 1; p < pts.length; p++) g.lineTo(pts[p][0], pts[p][1]);
+        g.closePath();
+    }
+
+    /**
+     * Draw one button: the frame, then either its icon or its letters.
+     *
+     * Every button on the panel is drawn by this one function, which is the
+     * point of it. Two things rule out letting After Effects draw them: a
+     * ScriptUI "iconbutton" comes out round whatever size it is given, and
+     * graphics.drawOSControl() -- the documented way to ask for the native
+     * frame under a custom onDraw -- silently paints nothing here. Mixing a
+     * native widget with a hand-drawn one gives a row that does not match,
+     * so nothing is native and the row matches itself.
+     */
+    function drawButton() {
+        var g = this.graphics;
+        var w = this.size.width;
+        var h = this.size.height;
+        var level = this.chromaLevel || BASE_BACKGROUND;
+        var state = this.chromaState || "normal";
+
+        var face = level * FACE_RATIO;
+        var border = level * BORDER_RATIO;
+        if (state === "hover") {
+            border = border * HOVER_BORDER_LIFT;
+        } else if (state === "down") {
+            face = face * DOWN_FACE_LIFT;
+            border = border * HOVER_BORDER_LIFT;
+        }
+
+        // Half-pixel inset so the 1px stroke lands on the pixel, not across it
+        roundRectPath(g, 0.5, 0.5, w - 1, h - 1, CORNER_RADIUS);
         try {
-            var left = Math.round((this.size.width - img.size[0]) / 2);
-            var top = Math.round((this.size.height - img.size[1]) / 2);
-            g.drawImage(img, left, top);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, grey(face)));
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(border), 1));
+        } catch (e) {}
+
+        var img = this.chromaImage;
+        if (img) {
+            try {
+                g.drawImage(img,
+                    Math.round((w - img.size[0]) / 2),
+                    Math.round((h - img.size[1]) / 2));
+            } catch (e) {}
+            return;
+        }
+
+        var label = this.chromaLabel || "";
+        if (!label) return;
+        try {
+            var font = g.font;
+            var dim = g.measureString(label, font);
+            // "PSR" does not fit a 30px button at the default size
+            if (dim.width > w - 6) {
+                font = ScriptUI.newFont(font.name, font.style,
+                    Math.max(9, font.size - 2));
+                dim = g.measureString(label, font);
+            }
+            g.drawString(label,
+                g.newPen(g.PenType.SOLID_COLOR, grey(level * TEXT_RATIO), 1),
+                Math.round((w - dim.width) / 2),
+                Math.round((h - dim.height) / 2),
+                font);
+        } catch (e) {}
+    }
+
+    /**
+     * Ask for a repaint. ScriptUI has no invalidate(); notify("onDraw") is
+     * the usual way and works in After Effects, but if a build disagrees,
+     * nudging the size forces the same thing. Without this the hover and
+     * pressed states would be computed and never shown.
+     */
+    function redraw(control) {
+        try {
+            control.notify("onDraw");
+            return;
+        } catch (e) {}
+        try {
+            control.size = [control.size.width, control.size.height];
+        } catch (e) {}
+    }
+
+    function trackState(btn) {
+        if (!btn.addEventListener) return;
+        function set(state) {
+            return function () {
+                btn.chromaState = state;
+                redraw(btn);
+            };
+        }
+        try {
+            btn.addEventListener("mouseover", set("hover"));
+            btn.addEventListener("mouseout", set("normal"));
+            btn.addEventListener("mousedown", set("down"));
+            btn.addEventListener("mouseup", set("hover"));
         } catch (e) {}
     }
 
@@ -521,11 +668,13 @@
         win.spacing = 6;
         win.margins = 6;
 
+        var level = backgroundLevel(win);
+
         var buttons = [
             { section: "Project", label: "Shots", action: "folders",
               png: ICON_FOLDERS_PNG, file: "chroma-mini-folders.png",
               tip: "Create Shot Folders: numbered shot bins in the Project panel, " +
-                   "SHOT001 \u2026 SHOT010." },
+                   "SHOT001 … SHOT010." },
             { section: "Parenting", label: "P", action: "position",
               tip: "Remove Position keyframes (including separated X/Y/Z)" + TOOL_SUFFIX },
             { section: "Parenting", label: "S", action: "scale",
@@ -572,18 +721,19 @@
                 sections[spec.section] = section;
             }
 
-            var image = spec.png ? embeddedImage(spec.png, spec.file) : null;
+            // The text is still set even though onDraw paints the label: if a
+            // build ever ignores onDraw, a plain readable button is a better
+            // failure than a blank one.
+            var btn = section.add("button", undefined, spec.label);
 
-            // An icon button carries no text: the picture is the label, and
-            // drawOSControl() would otherwise draw the word underneath it.
-            var btn = section.add("button", undefined, image ? "" : spec.label);
-
-            if (image) {
-                // Held on the button so it outlives this loop and is there
-                // for every redraw.
-                btn.chromaImage = image;
-                btn.onDraw = drawIconOnButton;
-            }
+            // Held on the button so they outlive this loop and are there for
+            // every repaint.
+            btn.chromaImage = spec.png ? embeddedImage(spec.png, spec.file) : null;
+            btn.chromaLabel = spec.label;
+            btn.chromaLevel = level;
+            btn.chromaState = "normal";
+            btn.onDraw = drawButton;
+            trackState(btn);
 
             // preferredSize rather than size: layout(true) recomputes from
             // preferredSize and would throw a fixed size away.

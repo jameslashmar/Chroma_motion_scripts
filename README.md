@@ -54,7 +54,7 @@ Two outlined sections: **Project**, holding the Create Shot Folders button, and 
 
 Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The two icons are embedded in the script as PNG bytes rather than sitting in a folder beside it, for the same reason.
 
-Every button is a plain ScriptUI button, the two with pictures on them included. A ScriptUI `iconbutton` is not an option here: After Effects draws it as a circle whatever size you ask for, so a row mixing the two widget types comes out half round and half square. The icon buttons instead override `onDraw`, hand the frame back to the platform with `drawOSControl()` and paint the image over the top — same widget, same frame, same press feedback.
+All six buttons are drawn by one `onDraw` function, so they cannot drift apart. After Effects leaves no way to have it draw them consistently: a ScriptUI `iconbutton` comes out round whatever size it is given, and `graphics.drawOSControl()` — the documented way to ask for the native frame underneath a custom `onDraw` — silently paints nothing, so an icon button ends up with no frame and no rollover. The frame, the rollover and the pressed state are therefore drawn by hand, in colours sampled from After Effects' own buttons and expressed as multiples of the dock background so a different UI brightness carries them with it.
 
 Icons by Royyan Wijaya, [The Noun Project](https://thenounproject.com/).
 
