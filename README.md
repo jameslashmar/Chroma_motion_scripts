@@ -46,6 +46,16 @@ The details that matter:
 - Position covers separated X/Y/Z too; Rotation covers X/Y/Z and Orientation on 3D layers.
 - Every click is one undo step.
 
+### `ScriptUI Panels/Chroma Utilities Mini.jsx`
+
+The same two tools as one row of square buttons, for docking in a strip above the timeline or down the side of the Project panel where a full-width panel won't fit.
+
+Two outlined sections: **Project**, holding the Create Shot Folders button, and **Parenting**, holding **P**, **S**, **R**, **PSR** and a keyframes icon for every keyframe on the layer. No status line — the result is visible in the comp, so success is silent and only a refused parent raises a dialog. Everything else behaves exactly as the full panel does, Alt-click to swap included.
+
+Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The two icons are embedded in the script as PNG data rather than sitting in a folder beside it, for the same reason.
+
+Icons by Royyan Wijaya, [The Noun Project](https://thenounproject.com/).
+
 ### `ScriptUI Panels/Chroma Purge After Render.jsx`
 
 Renders the render queue and purges caches after each item, so a long queue doesn't degrade as memory and the disk cache fill up.
