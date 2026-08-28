@@ -50,6 +50,8 @@ The details that matter:
 
 The same two tools as one row of square buttons, for docking in a strip above the timeline or down the side of the Project panel where a full-width panel won't fit.
 
+<img src="docs/images/chroma-utilities-mini.png" alt="Chroma Utilities Mini panel docked in After Effects: one row holding a Project section with a shot-folders icon button, and a Parenting section with P, S, R, PSR and a keyframes icon button" width="287">
+
 Two outlined sections: **Project**, holding the Create Shot Folders button, and **Parenting**, holding **P**, **S**, **R**, **PSR** and a keyframes icon for every keyframe on the layer. No status line — the result is visible in the comp, so success is silent and only a refused parent raises a dialog. Everything else behaves exactly as the full panel does, Alt-click to swap included.
 
 Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The two icons are embedded in the script as PNG bytes rather than sitting in a folder beside it, for the same reason.
