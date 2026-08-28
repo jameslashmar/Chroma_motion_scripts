@@ -17,8 +17,17 @@
  *
  * Failures come up as dialogs; success is silent.
  *
- * The two icons are embedded as PNG data so this stays a single-file
- * install. Icons: Royyan Wijaya, The Noun Project.
+ * Every button here is a plain ScriptUI button, including the two with
+ * pictures on them. A ScriptUI "iconbutton" is not an option: After Effects
+ * draws it as a circle whatever size you ask for, so a row mixing the two
+ * widgets comes out half round and half square. Instead the icon buttons
+ * override onDraw, ask the OS to paint the ordinary button frame with
+ * drawOSControl(), and draw the image over the top -- same widget, same
+ * frame, same press feedback, with a picture in the middle.
+ *
+ * The icons are embedded as PNG bytes rather than kept beside the script,
+ * so this stays a single-file install. Icons: Royyan Wijaya, The Noun
+ * Project.
  *
  * Windows + macOS. ExtendScript only: no shell calls, no platform branches.
  *
@@ -446,7 +455,7 @@
     /**
      * ScriptUI takes the PNG bytes directly as a string. If this build will
      * not, fall back to writing them to the temp folder and loading from
-     * there. Returns null if neither works; the button then shows its text.
+     * there. Returns null if neither works; the button then keeps its text.
      */
     function embeddedImage(pngBytes, fileName) {
         var img = null;
@@ -471,32 +480,35 @@
 
     // ---------------------------------------------------------------------- UI
 
-    // Square, and big enough for a 20px icon with a frame around it or for
-    // "PSR" at the default font. preferredSize rather than size: layout(true)
-    // recomputes from preferredSize and would throw a fixed size away.
+    // Square, and big enough for a 20px icon inside a button frame or for
+    // "PSR" at the default font.
     var BUTTON_SIZE = 30;
 
-    function addSquareButton(parent, label, image, tip) {
-        var btn;
-        if (image) {
-            btn = parent.add("iconbutton", undefined, image, { style: "button" });
-        } else {
-            btn = parent.add("button", undefined, label);
-        }
-        btn.preferredSize = [BUTTON_SIZE, BUTTON_SIZE];
-        btn.maximumSize = [BUTTON_SIZE, BUTTON_SIZE];
-        btn.alignment = ["center", "center"];
-        btn.helpTip = tip;
-        return btn;
-    }
+    var TOOL_SUFFIX = " from the duplicate, then parent it to the original. " +
+        "Select the original and its duplicate(s) first; Alt-click to swap.";
 
-    function addSection(win, title) {
-        var section = win.add("panel", undefined, title);
-        section.orientation = "row";
-        section.alignChildren = ["center", "center"];
-        section.margins = [6, 12, 6, 6];
-        section.spacing = 4;
-        return section;
+    /**
+     * Paint an image in the middle of an otherwise ordinary button.
+     *
+     * drawOSControl() hands the frame back to the platform, so the button is
+     * drawn exactly as its lettered neighbours are, in whatever UI brightness
+     * After Effects is set to, pressed and disabled states included. If a
+     * build has no drawOSControl the catch leaves the frame unpainted rather
+     * than inventing colours that would not match; the image still draws, so
+     * the button is still usable and still says what it does.
+     */
+    function drawIconOnButton() {
+        var g = this.graphics;
+        try {
+            g.drawOSControl();
+        } catch (e) {}
+        var img = this.chromaImage;
+        if (!img) return;
+        try {
+            var left = Math.round((this.size.width - img.size[0]) / 2);
+            var top = Math.round((this.size.height - img.size[1]) / 2);
+            g.drawImage(img, left, top);
+        } catch (e) {}
     }
 
     function buildUI(thisObj) {
@@ -509,30 +521,25 @@
         win.spacing = 6;
         win.margins = 6;
 
-        var iconFolders = embeddedImage(ICON_FOLDERS_PNG, "chroma-utilities-folders.png");
-        var iconKeyframes = embeddedImage(ICON_KEYFRAMES_PNG, "chroma-utilities-keyframes.png");
-
-        var tipSuffix = " from the duplicate, then parent it to the original. " +
-            "Select the original and its duplicate(s) first; Alt-click to swap.";
-
-        // --- project
-        var project = addSection(win, "Project");
-        var btnShotFolders = addSquareButton(project, "Shots", iconFolders,
-            "Create Shot Folders: numbered shot bins in the Project panel, SHOT001 \u2026 SHOT010.");
-
-        // --- parenting
-        var parenting = addSection(win, "Parenting");
-        var btnPosition = addSquareButton(parenting, "P", null,
-            "Remove Position keyframes (including separated X/Y/Z)" + tipSuffix);
-        var btnScale = addSquareButton(parenting, "S", null,
-            "Remove Scale keyframes" + tipSuffix);
-        var btnRotation = addSquareButton(parenting, "R", null,
-            "Remove Rotation keyframes (X/Y/Z and Orientation on 3D layers)" + tipSuffix);
-        var btnPSR = addSquareButton(parenting, "PSR", null,
-            "Remove Position, Scale and Rotation keyframes" + tipSuffix);
-        var btnAll = addSquareButton(parenting, "All", iconKeyframes,
-            "Remove every keyframe on the layer -- transform, effects, masks, text, shapes, " +
-            "styles -- but not markers or expressions" + tipSuffix);
+        var buttons = [
+            { section: "Project", label: "Shots", action: "folders",
+              png: ICON_FOLDERS_PNG, file: "chroma-mini-folders.png",
+              tip: "Create Shot Folders: numbered shot bins in the Project panel, " +
+                   "SHOT001 \u2026 SHOT010." },
+            { section: "Parenting", label: "P", action: "position",
+              tip: "Remove Position keyframes (including separated X/Y/Z)" + TOOL_SUFFIX },
+            { section: "Parenting", label: "S", action: "scale",
+              tip: "Remove Scale keyframes" + TOOL_SUFFIX },
+            { section: "Parenting", label: "R", action: "rotation",
+              tip: "Remove Rotation keyframes (X/Y/Z and Orientation on 3D layers)" +
+                   TOOL_SUFFIX },
+            { section: "Parenting", label: "PSR", action: "psr",
+              tip: "Remove Position, Scale and Rotation keyframes" + TOOL_SUFFIX },
+            { section: "Parenting", label: "All", action: "all",
+              png: ICON_KEYFRAMES_PNG, file: "chroma-mini-all.png",
+              tip: "Remove every keyframe on the layer -- transform, effects, masks, " +
+                   "text, shapes, styles -- but not markers or expressions" + TOOL_SUFFIX }
+        ];
 
         function guarded(fn) {
             return function () {
@@ -544,12 +551,49 @@
             };
         }
 
-        btnShotFolders.onClick = guarded(function () { createShotFolders(); });
-        btnPosition.onClick = guarded(function () { stripAndParent("position"); });
-        btnScale.onClick = guarded(function () { stripAndParent("scale"); });
-        btnRotation.onClick = guarded(function () { stripAndParent("rotation"); });
-        btnPSR.onClick = guarded(function () { stripAndParent("psr"); });
-        btnAll.onClick = guarded(function () { stripAndParent("all"); });
+        function handler(action) {
+            if (action === "folders") {
+                return guarded(function () { createShotFolders(); });
+            }
+            return guarded(function () { stripAndParent(action); });
+        }
+
+        var sections = {};
+        for (var i = 0; i < buttons.length; i++) {
+            var spec = buttons[i];
+
+            var section = sections[spec.section];
+            if (!section) {
+                section = win.add("panel", undefined, spec.section);
+                section.orientation = "row";
+                section.alignChildren = ["center", "center"];
+                section.margins = [6, 12, 6, 6];
+                section.spacing = 4;
+                sections[spec.section] = section;
+            }
+
+            var image = spec.png ? embeddedImage(spec.png, spec.file) : null;
+
+            // An icon button carries no text: the picture is the label, and
+            // drawOSControl() would otherwise draw the word underneath it.
+            var btn = section.add("button", undefined, image ? "" : spec.label);
+
+            if (image) {
+                // Held on the button so it outlives this loop and is there
+                // for every redraw.
+                btn.chromaImage = image;
+                btn.onDraw = drawIconOnButton;
+            }
+
+            // preferredSize rather than size: layout(true) recomputes from
+            // preferredSize and would throw a fixed size away.
+            btn.preferredSize = [BUTTON_SIZE, BUTTON_SIZE];
+            btn.minimumSize = [BUTTON_SIZE, BUTTON_SIZE];
+            btn.maximumSize = [BUTTON_SIZE, BUTTON_SIZE];
+            btn.alignment = ["center", "center"];
+            btn.helpTip = spec.tip;
+            btn.onClick = handler(spec.action);
+        }
 
         win.onResizing = win.onResize = function () {
             this.layout.resize();

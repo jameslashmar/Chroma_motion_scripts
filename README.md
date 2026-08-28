@@ -52,7 +52,9 @@ The same two tools as one row of square buttons, for docking in a strip above th
 
 Two outlined sections: **Project**, holding the Create Shot Folders button, and **Parenting**, holding **P**, **S**, **R**, **PSR** and a keyframes icon for every keyframe on the layer. No status line — the result is visible in the comp, so success is silent and only a refused parent raises a dialog. Everything else behaves exactly as the full panel does, Alt-click to swap included.
 
-Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The two icons are embedded in the script as PNG data rather than sitting in a folder beside it, for the same reason.
+Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The two icons are embedded in the script as PNG bytes rather than sitting in a folder beside it, for the same reason.
+
+Every button is a plain ScriptUI button, the two with pictures on them included. A ScriptUI `iconbutton` is not an option here: After Effects draws it as a circle whatever size you ask for, so a row mixing the two widget types comes out half round and half square. The icon buttons instead override `onDraw`, hand the frame back to the platform with `drawOSControl()` and paint the image over the top — same widget, same frame, same press feedback.
 
 Icons by Royyan Wijaya, [The Noun Project](https://thenounproject.com/).
 
