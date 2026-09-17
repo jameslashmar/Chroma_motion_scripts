@@ -19,7 +19,7 @@ The `aftereffects/` tree mirrors After Effects' own layout, so installing is a s
 
 ### `ScriptUI Panels/Chroma Utilities.jsx`
 
-A dockable panel of small tools. Two so far.
+A dockable panel of small tools. Three so far.
 
 <img src="docs/images/chroma-utilities.png" alt="Chroma Utilities panel docked in After Effects: a Create Shot Folders button under Project, then Position, Rotation, Scale, PSR and All keyframes buttons under Strip keys from duplicate, parent to original, with a status line reading Shape Layer 2 → Shape Layer 1: 11 all keys removed, parented" width="621">
 
@@ -46,19 +46,32 @@ The details that matter:
 - Position covers separated X/Y/Z too; Rotation covers X/Y/Z and Orientation on 3D layers.
 - Every click is one undo step.
 
+#### Transfer expressions
+
+Copies expressions from one layer to others: the expressions only, never keyframes or values. Click the source layer, Ctrl/Cmd-click each target, then click **Transfer**. One source can go to any number of targets in a single click.
+
+- **Whole layer or one property.** With only layers selected, every expression on the source is copied: transform, effects, masks, shape contents, text animators. Select a property on the source first (Position, say, or a whole effect or shape group) and only the expressions it covers are copied.
+- **Which layer is the source.** Whichever selected layer has expressions to give. If more than one does, as when re-running after an earlier transfer, it's the one you clicked first, since After Effects reports layers in the order they were selected. Hold **Alt** (Option) to use the one clicked last instead.
+- **How properties are matched.** Each property is found on the target by where it sits in the layer, using match names, so it works across renamed layers and in any interface language. Effects, masks and shape groups are matched by name, then by position, and must be the same kind either way, so a blur's expression never lands on some other effect that happens to be second in the stack.
+- **Nothing is created.** If a target lacks the property (most often an expression control the source has and the target doesn't) that expression is skipped and the status line lists it. An expression that goes on but can't evaluate on the target, typically because it refers to an effect the target is missing, is listed too.
+- Expressions are copied as written, so one that refers to a layer or effect by name still refers to that name on the target.
+- An expression that is switched off on the source arrives switched off.
+- A target's existing expressions are replaced only where the source has one; the rest are left alone.
+- Every click is one undo step.
+
 ### `ScriptUI Panels/Chroma Utilities Mini.jsx`
 
-The same two tools as one row of square buttons, for docking in a strip above the timeline or down the side of the Project panel where a full-width panel won't fit.
+The same three tools as one row of square buttons, for docking in a strip above the timeline or down the side of the Project panel where a full-width panel won't fit.
 
 <img src="docs/images/chroma-utilities-mini.png" alt="Chroma Utilities Mini panel docked in After Effects: one row holding a Project section with a shot-folders icon button, and a Parenting section with P, S, R, PSR and a keyframes icon button" width="287">
 
-Two outlined sections: **Project**, holding the Create Shot Folders button, and **Parenting**, holding **P**, **S**, **R**, **PSR** and a keyframes icon for every keyframe on the layer. No status line — the result is visible in the comp, so success is silent and only a refused parent raises a dialog. Everything else behaves exactly as the full panel does, Alt-click to swap included.
+Three outlined sections: **Project**, holding the Create Shot Folders button; **Parenting**, holding **P**, **S**, **R**, **PSR** and a keyframes icon for every keyframe on the layer; and **Expressions**, holding the transfer button (`=→`). No status line — the result is visible in the comp, so success is silent. Only a refused parent, or an expression that was skipped or won't evaluate on its target, raises a dialog. Everything else behaves exactly as the full panel does, Alt-click included.
 
-Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The two icons are embedded in the script as PNG bytes rather than sitting in a folder beside it, for the same reason.
+Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The icons are embedded in the script as PNG bytes rather than sitting in a folder beside it, for the same reason.
 
-All six buttons are drawn by one `onDraw` function, so they cannot drift apart. After Effects leaves no way to have it draw them consistently: a ScriptUI `iconbutton` comes out round whatever size it is given, and `graphics.drawOSControl()` — the documented way to ask for the native frame underneath a custom `onDraw` — silently paints nothing, so an icon button ends up with no frame and no rollover. The frame, the rollover and the pressed state are therefore drawn by hand, in colours sampled from After Effects' own buttons and expressed as multiples of the dock background so a different UI brightness carries them with it.
+Every button is drawn by one `onDraw` function, so they cannot drift apart. After Effects leaves no way to have it draw them consistently: a ScriptUI `iconbutton` comes out round whatever size it is given, and `graphics.drawOSControl()` — the documented way to ask for the native frame underneath a custom `onDraw` — silently paints nothing, so an icon button ends up with no frame and no rollover. The frame, the rollover and the pressed state are therefore drawn by hand, in colours sampled from After Effects' own buttons and expressed as multiples of the dock background so a different UI brightness carries them with it.
 
-Icons by Royyan Wijaya, [The Noun Project](https://thenounproject.com/).
+Folder and keyframe icons by Royyan Wijaya, [The Noun Project](https://thenounproject.com/).
 
 ### `ScriptUI Panels/Chroma Purge After Render.jsx`
 

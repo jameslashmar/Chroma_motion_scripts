@@ -5,19 +5,26 @@
  * status line, sized to sit in a strip above the timeline or down the side
  * of the Project panel. Dock it and forget it.
  *
- *   Project    [folders]                  Create Shot Folders dialog
- *   Parenting  [P] [S] [R] [PSR] [keys]   Strip keys from duplicate, parent to original
+ *   Project      [folders]                  Create Shot Folders dialog
+ *   Parenting    [P] [S] [R] [PSR] [keys]   Strip keys from duplicate, parent to original
+ *   Expressions  [=>]                       Transfer expressions
  *
  * P, S, R and PSR strip Position, Scale, Rotation or all three; the
  * keyframes icon strips every keyframe on the layer. Select the original
  * and its duplicate(s) first; hold Alt (Option) while clicking to swap
- * which is the original. The tool logic is a copy of the full panel's --
- * see Chroma Utilities.jsx for how the original is inferred and what is
- * left alone.
+ * which is the original.
+ *
+ * The transfer button copies expressions -- nothing else -- from the source
+ * layer to every other selected layer: click the source, then the targets.
+ * With a property selected on the source, only that property's expression
+ * goes across; otherwise all of them.
+ *
+ * The tool logic is a copy of the full panel's -- see Chroma Utilities.jsx
+ * for how the original and the source are chosen and what is left alone.
  *
  * Failures come up as dialogs; success is silent.
  *
- * All six buttons are drawn by one function, so they cannot drift apart.
+ * Every button is drawn by one function, so they cannot drift apart.
  * After Effects leaves no way to have it draw them: a ScriptUI "iconbutton"
  * comes out round whatever size it is given, and graphics.drawOSControl() --
  * the documented way to ask for the native frame underneath a custom onDraw
@@ -27,8 +34,8 @@
  * to whatever UI brightness is set.
  *
  * The icons are embedded as PNG bytes rather than kept beside the script,
- * so this stays a single-file install. Icons: Royyan Wijaya, The Noun
- * Project.
+ * so this stays a single-file install. Folder and keyframe icons: Royyan
+ * Wijaya, The Noun Project.
  *
  * Windows + macOS. ExtendScript only: no shell calls, no platform branches.
  *
@@ -425,6 +432,317 @@
         }
     }
 
+    // ------------------------------------------------- transfer expressions
+
+    /**
+     * Where a property sits on its layer, as steps from the layer down, so
+     * the same property can be found on another layer. Null if the property
+     * can't be walked.
+     */
+    function propertyPath(prop) {
+        var steps = [];
+        var current = prop;
+        var guard = 0;
+        try {
+            while (current && current.propertyDepth > 0 && guard++ < 100) {
+                var parent = current.parentProperty;
+                steps.unshift({
+                    matchName: current.matchName,
+                    name: current.name,
+                    index: current.propertyIndex,
+                    // Children of an indexed group -- effects, masks, shape
+                    // groups, text animators -- share match names.
+                    indexed: current.propertyDepth > 1 &&
+                        parent.propertyType === PropertyType.INDEXED_GROUP
+                });
+                current = parent;
+            }
+        } catch (e) {
+            return null;
+        }
+        return steps.length ? steps : null;
+    }
+
+    function pathKey(steps) {
+        var parts = [];
+        for (var i = 0; i < steps.length; i++) parts.push(steps[i].index);
+        return parts.join("/");
+    }
+
+    // "Position", "Slider Control › Slider", "Box › Rectangle Path 1 › Size":
+    // the top-level group (Transform, Effects, Masks, Contents) and a shape
+    // group's own inner Contents are noise.
+    function pathLabel(steps) {
+        var names = [];
+        for (var i = (steps.length > 1 ? 1 : 0); i < steps.length; i++) {
+            if (steps[i].matchName !== "ADBE Vectors Group") names.push(steps[i].name);
+        }
+        return names.join(" › ");
+    }
+
+    /**
+     * The same property on another layer, or null. Named groups are found by
+     * match name. An indexed group's child is found by name, then by
+     * position, and has to be the same kind of thing either way, so a Blur
+     * expression never lands on whatever effect happens to be second.
+     */
+    function resolvePath(layer, steps) {
+        var current = layer;
+        for (var i = 0; i < steps.length; i++) {
+            var step = steps[i];
+            var next = null;
+            if (step.indexed) {
+                try {
+                    next = current.property(step.name);
+                } catch (e) {}
+                if (!next || next.matchName !== step.matchName) {
+                    next = null;
+                    try {
+                        if (step.index <= current.numProperties) next = current.property(step.index);
+                    } catch (e) {}
+                    if (next && next.matchName !== step.matchName) next = null;
+                }
+            } else {
+                try {
+                    next = current.property(step.matchName);
+                } catch (e) {}
+            }
+            if (!next) return null;
+            current = next;
+        }
+        return current;
+    }
+
+    function hasExpression(prop) {
+        try {
+            return prop.propertyType === PropertyType.PROPERTY &&
+                prop.canSetExpression && prop.expression !== "";
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function collectExpressions(group, found) {
+        var total = 0;
+        try {
+            total = group.numProperties;
+        } catch (e) {
+            return;
+        }
+        for (var i = 1; i <= total; i++) {
+            var prop = null;
+            try {
+                prop = group.property(i);
+            } catch (e) {}
+            if (!prop) continue;
+            try {
+                if (prop.propertyType === PropertyType.PROPERTY) {
+                    if (hasExpression(prop)) found.push(prop);
+                } else {
+                    collectExpressions(prop, found);
+                }
+            } catch (e) {}
+        }
+    }
+
+    /**
+     * The expressions a layer's property selection covers. A selected group
+     * (an effect, Transform, a shape group) covers everything inside it --
+     * unless something inside it is selected as well, as happens when
+     * clicking an effect's parameter selects the effect too. Then only the
+     * inner selection counts.
+     */
+    function selectedExpressions(layer) {
+        var selected = [];
+        try {
+            selected = layer.selectedProperties;
+        } catch (e) {}
+
+        var keys = [];
+        for (var i = 0; i < selected.length; i++) {
+            var steps = propertyPath(selected[i]);
+            keys.push(steps ? pathKey(steps) : null);
+        }
+
+        var found = [];
+        for (i = 0; i < selected.length; i++) {
+            var prop = selected[i];
+            if (keys[i] === null) continue;
+            try {
+                if (prop.propertyType === PropertyType.PROPERTY) {
+                    if (hasExpression(prop)) found.push(prop);
+                    continue;
+                }
+            } catch (e) {
+                continue;
+            }
+            var narrowed = false;
+            for (var k = 0; k < keys.length; k++) {
+                if (keys[k] !== null && keys[k].indexOf(keys[i] + "/") === 0) {
+                    narrowed = true;
+                    break;
+                }
+            }
+            if (!narrowed) collectExpressions(prop, found);
+        }
+        return found;
+    }
+
+    function hasSelectedProperties(layer) {
+        try {
+            return layer.selectedProperties.length > 0;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * Copy expressions from one selected layer to every other selected
+     * layer. Only the expression text and its on/off switch travel: no
+     * keyframes, no values, and nothing is created on a target that lacks
+     * the property.
+     *
+     * With properties selected, only those are copied; otherwise every
+     * expression on the layer. The source is the selected layer that has
+     * expressions to give. If several have, it is the one clicked first --
+     * or last, with Alt held.
+     *
+     * Returns what happened, for the caller to report: { error } when
+     * nothing was attempted.
+     */
+    function transferExpressions() {
+        var comp = app.project.activeItem;
+        if (!(comp instanceof CompItem)) return { error: "Open a composition first." };
+        var selected = comp.selectedLayers;
+        if (selected.length < 2) {
+            return { error: "Select the source layer, then the layer(s) to copy its expressions to." };
+        }
+
+        var byProperty = false;
+        for (var i = 0; i < selected.length; i++) {
+            if (hasSelectedProperties(selected[i])) {
+                byProperty = true;
+                break;
+            }
+        }
+
+        var candidates = [];
+        for (i = 0; i < selected.length; i++) {
+            var props = [];
+            if (byProperty) {
+                props = selectedExpressions(selected[i]);
+            } else {
+                collectExpressions(selected[i], props);
+            }
+            if (props.length) candidates.push({ layer: selected[i], props: props });
+        }
+        if (!candidates.length) {
+            return {
+                error: byProperty
+                    ? "None of the selected properties has an expression."
+                    : "None of the selected layers has an expression."
+            };
+        }
+
+        var last = false;
+        try {
+            last = ScriptUI.environment.keyboardState.altKey;
+        } catch (e) {}
+        var source = candidates[last ? candidates.length - 1 : 0];
+
+        // Read everything off the source before writing anything.
+        var entries = [];
+        var seen = {};
+        for (i = 0; i < source.props.length; i++) {
+            var prop = source.props[i];
+            var steps = propertyPath(prop);
+            if (!steps) continue;
+            var key = pathKey(steps);
+            if (seen[key]) continue;
+            seen[key] = true;
+            var enabled = true;
+            try {
+                enabled = prop.expressionEnabled;
+            } catch (e) {}
+            entries.push({ steps: steps, label: pathLabel(steps), expression: prop.expression, enabled: enabled });
+        }
+
+        var targets = [];
+        for (i = 0; i < selected.length; i++) {
+            if (selected[i].index !== source.layer.index) targets.push(selected[i]);
+        }
+
+        var result = {
+            source: source.layer.name,
+            targets: [],
+            byProperty: byProperty,
+            labels: [],
+            copied: 0,
+            missing: [],
+            failed: [],
+            broken: []
+        };
+        for (i = 0; i < entries.length; i++) result.labels.push(entries[i].label);
+        for (i = 0; i < targets.length; i++) result.targets.push(targets[i].name);
+
+        app.beginUndoGroup("Chroma: Transfer expressions");
+        try {
+            for (var t = 0; t < targets.length; t++) {
+                var target = targets[t];
+                for (var n = 0; n < entries.length; n++) {
+                    var entry = entries[n];
+                    var where = target.name + ": " + entry.label;
+                    var dest = resolvePath(target, entry.steps);
+                    var settable = false;
+                    try {
+                        settable = dest && dest.propertyType === PropertyType.PROPERTY && dest.canSetExpression;
+                    } catch (e) {}
+                    if (!settable) {
+                        result.missing.push(where);
+                        continue;
+                    }
+                    try {
+                        dest.expression = entry.expression;
+                    } catch (e) {
+                        result.failed.push(where + " (" + e.toString() + ")");
+                        continue;
+                    }
+                    try {
+                        if (dest.expressionEnabled !== entry.enabled) dest.expressionEnabled = entry.enabled;
+                    } catch (e) {}
+                    result.copied++;
+                    // It went on, but doesn't evaluate here -- typically a
+                    // reference to an effect this layer doesn't have.
+                    var problem = "";
+                    try {
+                        problem = dest.expressionError;
+                    } catch (e) {}
+                    if (problem) result.broken.push(where);
+                }
+            }
+        } finally {
+            app.endUndoGroup();
+        }
+        return result;
+    }
+
+    // No status line on the mini panel: success is silent, anything
+    // skipped or broken is worth a dialog.
+    function transferAndReport() {
+        var result = transferExpressions();
+        if (result.error) {
+            alert(result.error, SCRIPT_NAME);
+            return;
+        }
+        if (!result.missing.length && !result.failed.length && !result.broken.length) return;
+        var lines = [result.source + " → " + result.targets.join(", ") + ": " +
+            plural(result.copied, "expression") + " copied."];
+        if (result.missing.length) lines.push("Not on target:\n" + result.missing.join("\n"));
+        if (result.failed.length) lines.push("Failed:\n" + result.failed.join("\n"));
+        if (result.broken.length) lines.push("Errors in:\n" + result.broken.join("\n"));
+        alert(lines.join("\n\n"), SCRIPT_NAME);
+    }
+
     // ------------------------------------------------------------------ icons
 
     // 20x20 white-on-transparent PNGs, byte for byte.
@@ -452,6 +770,20 @@
         "\x91w`Q\xFCY\xD9DOE\xDB9\x92J\xC5\xBFK\xB8\x15\xED\xBC\xD1Y\x9D\xEC\xBD\xDD\x12\xC0\x0A\xF2\xF3" +
         "\xB0\xD1\xFA\xD5p\xD8#\xFC\xC9\xFE\x7F\xC0>\x00\xE11\x9Bk\xF5\xF9\xB4L\x00\x00\x00\x00IEND\xAEB`" +
         "\x82";
+
+    var ICON_TRANSFER_PNG =
+        "\x89PNG\x0D\x0A\x1A\x0A\x00\x00\x00\x0DIHDR\x00\x00\x00\x14\x00\x00\x00\x14\x08\x06\x00\x00\x00" +
+        "\x8D\x89\x1D\x0D\x00\x00\x01:IDATx\xDA\xBD\x941J\x03Q\x10\x86\xBF\xB7\x89\x18$\x98@<\x81\x85\x95" +
+        "M\xAE\xE09\x04+O\xA0\x8D\xBD\x85\x85^\xC0\xCBx\x02\x1B{\x11\x8C\x85\x88\x8D\xAB\x82\x22\xC9g\x91" +
+        "Y|,\xBB qq\xE0\xE7=vf\xFE7;\xF3\xDE\x9FT\xBA\xB4\x82\x8EmU\xC2\xD4%a\x02l\xCB-j\x81M\xA8\x9B\xC0" +
+        "\x00X4\x91\x16\xB5\xC0&\xD4c\xA7\xC0\x1Dp\x14\xA4\xFD\x9C\xB0\x9FU\xB7\xD9P\x91@\x19k\x0A\xD27" +
+        "\xA0\x07\x9CG\xCC\x05\xB0\x06|-3\x14u\xAC\xCE\xD4R}\x09\x94\xEA}\xF8\xA8a[\xBDui\x87\xF1\xAD\xA7" +
+        "\xFE\xBA\x87\x09\x18\x07&\xC0#\xB0\x0F<\x03\x97\xC0\x010\x07z).v\x026Z\x86\xF0\x0E\x8C\x80\x9B 4" +
+        "~\xF9\x13\x18F\xDB\x0A`\x0F\xB8*\xFEx\x87\xE71\x18\x80\xF5z\x0F\x1F\xD4\xD7\xE8]\x19\xFBY\xF8R" +
+        "\xACcu\xA2\x0E\xD5\xDD\xE8\xB1\xEAq\xD5\xC7U\x87\xB2\xA5^\x07\xD9I>\x94* \xA9\xA3\xAC\x8A\x0A" +
+        "\xA3\xF0U\x09\x85\xBA\x93Uv\x16\xBE~\x15G\xC3\xE9m(b\x9D\xAAO\xEAivPu()\x93\xAF\xB6\x07\xDF\xA4o" +
+        "\x03\xE0#\xCB\xF9!YA\x0FsqXt\xA16\xD53\x5Ct\xA9\x87\xFE\x9Bb\x7F\x03\xAE\x95y\x273\xB4\x86\x0E" +
+        "\x00\x00\x00\x00IEND\xAEB`\x82";
 
     /**
      * ScriptUI takes the PNG bytes directly as a string. If this build will
@@ -687,7 +1019,14 @@
             { section: "Parenting", label: "All", action: "all",
               png: ICON_KEYFRAMES_PNG, file: "chroma-mini-all.png",
               tip: "Remove every keyframe on the layer -- transform, effects, masks, " +
-                   "text, shapes, styles -- but not markers or expressions" + TOOL_SUFFIX }
+                   "text, shapes, styles -- but not markers or expressions" + TOOL_SUFFIX },
+            { section: "Expressions", label: "Exp", action: "transfer",
+              png: ICON_TRANSFER_PNG, file: "chroma-mini-transfer.png",
+              tip: "Transfer expressions: click the source layer, then the target(s). " +
+                   "Copies expressions only, no keyframes or values. With a property " +
+                   "selected on the source, only that one; otherwise all of them. If " +
+                   "several selected layers have expressions, the one clicked first is " +
+                   "the source -- Alt-click for the one clicked last." }
         ];
 
         function guarded(fn) {
@@ -703,6 +1042,9 @@
         function handler(action) {
             if (action === "folders") {
                 return guarded(function () { createShotFolders(); });
+            }
+            if (action === "transfer") {
+                return guarded(function () { transferAndReport(); });
             }
             return guarded(function () { stripAndParent(action); });
         }
