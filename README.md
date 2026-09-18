@@ -109,6 +109,49 @@ Restart After Effects afterwards. Panels then appear at the bottom of the **Wind
 
 `Chroma Purge After Render` needs **Preferences → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled before it can clear the disk cache. Everything else in it works without that.
 
+### `plugins/vr_color_gradients_3d/`
+
+An effect plugin — C++ rather than a script — that does what After Effects' own **VR Color Gradients** does, with one addition: **every gradient point carries a Z axis**, so the points sit in 3D space instead of being pinned to the surface of the sphere.
+
+Adobe's version gives each of its eight points a direction only. You can move a colour around the 360 frame, but not change how far its influence spreads — the falloff exponent is global, so tightening one point tightens all of them. A distance per point makes spread a local property.
+
+#### Why Z = 0 changes nothing
+
+A gradient point is treated as a position rather than a direction, `P = radius * direction`, and the falloff uses the real 3D distance from that point to wherever the pixel's ray meets the unit sphere:
+
+```
+|P - d|^2  =  radius^2 + 1 - 2 * radius * (direction . d)
+```
+
+At `radius == 1` that collapses to the chord distance `2*sin(theta/2)` — a pure angular falloff, which is exactly how a point stuck to the sphere behaves. So `Z = 0` reproduces a flat gradient *exactly*, and the Z axis is strictly additive: it can never shift a look you already had.
+
+Pull a point inward and its distance to every direction evens out, so its colour blooms wide across the sphere. Push it outward and the colour tightens into a hotspot.
+
+#### Two point spaces, one set of controls
+
+Each point is a single 3D point parameter; a **Point Space** popup decides how its X/Y/Z is read, rather than doubling eight points' worth of UI.
+
+- **Equirect + Distance** — X/Y is the position in the equirect frame in pixels, draggable on the canvas exactly as Adobe's is, and Z is depth: `radius = 1 + Z / Depth Scale`. A drop-in.
+- **World XYZ** — Cartesian, viewer at the centre of the frame, with direction *and* falloff derived from the vector. After Effects' Y axis points down and is flipped internally, so expression-linking a point to a 3D null's `position` behaves the way you'd expect. That is the reason the mode exists: the gradient can be driven by something you animate in the 3D viewport.
+
+The rest matches the original — frame layout (monoscopic or either stereo pair), horizontal and vertical field of view, 1–8 points with a colour each, a falloff exponent, opacity and the usual blending modes. **Gradient Blend** at 0 % collapses the mix to hard Voronoi cells, which is useful on its own.
+
+Unlike Adobe's, which is GPU-only and refuses to render without acceleration, this one is a CPU smart-render effect: 8-, 16- and 32-bit, float-aware, multi-threaded, and it works with GPU acceleration switched off.
+
+This is an independent implementation of the standard maths — equirectangular projection plus inverse-distance-weighted interpolation. No Adobe code is reproduced.
+
+#### Building and installing it
+
+Source only; there's no binary in the repo. It needs the After Effects SDK and MSVC, then:
+
+```powershell
+.\build.ps1 -Install     # builds, then copies into After Effects (elevates)
+```
+
+SDK, Visual Studio and After Effects locations are all parameters — pass your own if the defaults don't match. The resulting `.aex` belongs in `Support Files\Plug-ins\Effects\`, where it survives After Effects updates, and needs a restart. The effect then appears under **Effect → Immersive Video**.
+
+The geometry, interpolation and blend modes live in a header with no After Effects types in it, so `tests/` compiles and runs them under plain `g++` — including an offline renderer that writes equirect stills. Its [README](plugins/vr_color_gradients_3d/README.md) covers the parameters in full, and the SDK and scripting traps worth knowing about, among them a bug in the SDK's own `PF_ADD_POINT_3D` macro, which discards the Z default you pass it.
+
 ---
 
 ## Cinema 4D
@@ -239,5 +282,7 @@ Same, but suspends to standby instead of shutting down, via `powrprof.dll,SetSus
 The After Effects scripts were written against **After Effects 2026** using ExtendScript and the classic `app` API. They use only the `File`/`Folder` API for disk work — no shell calls and no platform branches — so they run on macOS and Windows alike. Anything version-dependent, notably the disk cache preference key, is probed at runtime rather than hardcoded.
 
 The XPresso scripts were written and tested against **Cinema 4D 2026 / Python 3.11**, using the classic `c4d` API and `c4d.modules.graphview`. Several API surfaces changed in ways that break older forum examples — those differences are documented in [docs/xpresso-api-notes.md](docs/xpresso-api-notes.md), which is worth reading before writing any new XPresso tooling.
+
+`VR Color Gradients 3D` is a compiled effect plugin rather than a script, built against the **After Effects SDK 25.6** and shipped as source. The build script is Windows/MSVC; the source itself is portable and carries the Mac entry points in its PiPL, but only the Windows build has been exercised.
 
 The batch and command files are Windows-only.

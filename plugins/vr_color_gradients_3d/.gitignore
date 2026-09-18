@@ -1,0 +1,8 @@
+# build intermediates and output
+obj/
+build/
+
+# test binaries and rendered previews
+tests/*.exe
+tests/*.ppm
+tests/*.png
