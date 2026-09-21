@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# A .kbar is a zip. text=auto guesses by content and would almost certainly
+# guess right, but "almost certainly" is not what you want protecting an
+# archive: one normalised byte and the import fails with nothing to point at.
+*.kbar binary

@@ -26,18 +26,40 @@ click PSR with a single press, and it is one undo step.
 
 ## Installing
 
-**For kBar:** put the `.jsx` files anywhere kBar can reach them and keep them there —
-kBar stores the path you browse to, so moving them later breaks the button. Somewhere
-that is not wiped by an After Effects update is the point, so not inside the AE install:
+### The quick way: import `Chroma Utilities.kbar`
+
+In After Effects: **Window → Extensions → KBar** → the **pencil** (Settings) →
+**Import** → pick `Chroma Utilities.kbar`. All nine buttons arrive as one toolbar named
+*Chroma Utilities*, already labelled.
+
+The file is **baked**: it carries its own copies of the nine scripts inside it, so there
+is nothing to install first and no paths to fix up. It works the same on a machine that
+has never seen this repo. Importing **adds** a toolbar — kBar calls `addToolbar`, not a
+replace — so an existing kBar setup is left alone.
+
+Rebuild it after changing anything:
+
+```sh
+python3 aftereffects/kbar/build_kbar.py          # regenerate the scripts
+python3 aftereffects/kbar/build_kbar_toolbar.py  # rebake them into the .kbar
+```
+
+### Adding buttons by hand instead
+
+Put the `.jsx` files anywhere kBar can reach them and keep them there — an unbaked
+button stores the path you browse to, so moving them later breaks it. Somewhere an
+After Effects update will not wipe, so not inside the AE install:
 
 ```
 Windows   C:\Users\<you>\Documents\Chroma\kbar\
 macOS     ~/Documents/Chroma/kbar/
 ```
 
-Then, in kBar: **Edit** (the pencil) → **Add Button** → choose the **JSX / script file**
-type → browse to the script → give it a label or an icon → **OK**. kBar ships its own
-icon library and takes custom PNG or SVG, so there are no icons in this folder.
+Then in kBar: **pencil → Add Button → JSX/JSXBIN file** → browse to the script → give it
+a label or an icon → **OK**. kBar ships its own icon library and takes custom PNG or SVG,
+which is why there are no icons in this folder; the suggested labels are in the table
+above. Keep a text label to **8 characters or fewer** or kBar draws the button wide — a
+newline in the label gives a second row instead.
 
 **For a keyboard shortcut instead:** copy the `.jsx` files — the files, not this folder —
 into the After Effects install:
@@ -61,6 +83,18 @@ button, one action. The panels are still there when the swap is wanted.
 
 That is also why `Dup PSR` and `Dup all` are two files rather than one with a modifier.
 
+## The `.kbar` format
+
+Undocumented, so it was read out of kBar 3.1.5's own `js/common.js` — the export builder
+and the schema migrator. A `.kbar` is a zip holding `manifest.json` (version 1, one
+`toolbar`, plus `scripts`/`presets`/`shell` arrays naming what was baked in) and, when
+baked, `scripts/<file>.jsx`. A script button is `type: 1` (`InvokeScript`) and points at
+its baked copy with `filePath: "kzip://scripts/<index>"`. An icon is
+`{type, path, color}`, where type `0` is text and `path` **is** the label.
+
+If an import ever fails, re-read those two functions in the installed kBar before
+assuming `build_kbar_toolbar.py` is wrong — a future kBar could move the format.
+
 ## These are generated
 
 Do not edit them. They are lifted out of `../ScriptUI Panels/Chroma Utilities Mini.jsx`
@@ -83,7 +117,11 @@ to drift, which is what the generator is for.
 
 ## Status
 
-Written 2026-09-21 and **not yet run inside kBar** — kBar is not installed on this
-machine. Every script is checked to parse and to define every name it calls, and the
-logic is lifted verbatim from the Mini panel rather than rewritten, but the kBar
-round-trip itself is untested. The keyboard-shortcut route is untested too.
+Written 2026-09-21. Every script is checked to parse and to define every name it calls,
+and the logic is lifted verbatim from the Mini panel rather than rewritten. The `.kbar`
+is validated against kBar 3.1.5's own import assertions — archive integrity, manifest
+shape, every `kzip://scripts/N` index in range and its baked file present.
+
+**Not yet imported into kBar, and none of the buttons has been clicked.** The format was
+read out of kBar's source rather than round-tripped through its own export, so the
+import is the first real test.

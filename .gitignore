@@ -1,2 +1,7 @@
 # Plugin source stays private - only the compiled .pypv ships
 *.pyp
+
+# Python bytecode. cinema4d/ is full of .py, so running any of it locally
+# leaves one of these behind.
+__pycache__/
+*.pyc
