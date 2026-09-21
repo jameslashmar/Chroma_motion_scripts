@@ -26,6 +26,20 @@
  *     are left alone. Parenting uses After Effects' own compensation, so the
  *     duplicate stays where it is on screen rather than jumping.
  *
+ *   Duplicate + strip PSR
+ *     The same thing in one click, from one layer: select the animated
+ *     layer, click the button, and it is duplicated, the duplicate's
+ *     Position, Scale and Rotation keys are removed and it is parented to
+ *     the layer it came from -- one undo step. Nothing to duplicate by hand
+ *     and nothing to select twice, so it is the one worth putting on a
+ *     keyboard shortcut or a kBar button (see Scripts/DuplicateStripParent.jsx,
+ *     which is this button as a standalone script).
+ *
+ *     Hold Alt (Option) to strip every keyframe on the duplicate instead of
+ *     just the three transform sets. Several selected layers each get their
+ *     own duplicate, parented to themselves rather than to each other, and
+ *     the new duplicates are left selected, ready to be animated.
+ *
  *   Transfer expressions
  *     Click the source layer, then one or more targets, and click Transfer.
  *     Every expression on the source is copied to each target -- or, if a
@@ -90,6 +104,18 @@
 
     function plural(count, noun) {
         return count + " " + noun + (count === 1 ? "" : "s");
+    }
+
+    /**
+     * Whether Alt (Option) is down as a button fires. Not every build of
+     * After Effects exposes the keyboard state, so a missing one reads as
+     * not held rather than throwing out of the click.
+     */
+    function altPressed() {
+        try {
+            return !!ScriptUI.environment.keyboardState.altKey;
+        } catch (e) {}
+        return false;
     }
 
     // ----------------------------------------------------- create shot folders
@@ -387,12 +413,7 @@
             return;
         }
 
-        var swap = false;
-        try {
-            swap = ScriptUI.environment.keyboardState.altKey;
-        } catch (e) {}
-
-        var ranked = rankLayers(selected, swap);
+        var ranked = rankLayers(selected, altPressed());
         var original = ranked[0].layer;
         var time = comp.time;
 
@@ -432,6 +453,105 @@
             plural(removed, MODE_LABELS[mode] + " key") + " removed";
         if (parented) message += ", parented";
         if (failed.length) message += ". Not parented: " + failed.join(", ");
+        setStatus(message);
+    }
+
+    /**
+     * The one-layer version: make the duplicate as well. Select the animated
+     * layer, click once, and it is duplicated, the copy is stripped and the
+     * copy is parented to it -- the same end state as duplicating by hand and
+     * then clicking PSR, in a single undo step.
+     *
+     * Several selected layers each get their own duplicate, parented to
+     * themselves and not to each other, and the duplicates are left selected
+     * because the duplicate is the layer you go on to animate.
+     *
+     * No loop check here, unlike stripAndParent: a layer created a moment ago
+     * cannot already be somewhere in its source's parent chain.
+     */
+    function duplicateStripParent(mode, setStatus) {
+        var comp = app.project.activeItem;
+        if (!(comp instanceof CompItem)) {
+            setStatus("Open a composition first.");
+            return;
+        }
+        var originals = comp.selectedLayers;
+        if (!originals.length) {
+            setStatus("Select the layer to duplicate.");
+            return;
+        }
+
+        var time = comp.time;
+        var removed = 0;
+        var made = [];
+        var notDuplicated = [];
+        var notParented = [];
+
+        app.beginUndoGroup("Chroma: Duplicate + strip " + MODE_LABELS[mode] + " keys + parent");
+        try {
+            for (var i = 0; i < originals.length; i++) {
+                var original = originals[i];
+                var dup = null;
+                try {
+                    dup = original.duplicate();
+                } catch (e) {
+                    notDuplicated.push(original.name);
+                    continue;
+                }
+
+                // The duplicate of a locked layer is locked too, and a locked
+                // layer takes neither key removal nor a parent. Unlock it for
+                // the work; the lock goes back on at the end.
+                var relock = false;
+                try {
+                    if (dup.locked) {
+                        dup.locked = false;
+                        relock = true;
+                    }
+                } catch (e) {}
+
+                removed += stripLayer(dup, mode, time);
+
+                try {
+                    dup.parent = original;
+                } catch (e) {
+                    notParented.push(dup.name);
+                }
+                made.push({ layer: dup, original: original, relock: relock });
+            }
+
+            for (var d = 0; d < originals.length; d++) {
+                try { originals[d].selected = false; } catch (e) {}
+            }
+            for (var m = 0; m < made.length; m++) {
+                try { made[m].layer.selected = true; } catch (e) {}
+            }
+
+            // Locks go back on last, because a locked layer cannot be selected.
+            for (var r = 0; r < made.length; r++) {
+                if (made[r].relock) {
+                    try { made[r].layer.locked = true; } catch (e) {}
+                }
+            }
+        } catch (e) {
+            setStatus("Error: " + e.toString());
+            return;
+        } finally {
+            app.endUndoGroup();
+        }
+
+        if (!made.length) {
+            setStatus("Could not duplicate " + notDuplicated.join(", ") + ".");
+            return;
+        }
+
+        var message = (made.length === 1)
+            ? made[0].layer.name + " → " + made[0].original.name + ": "
+            : plural(made.length, "duplicate") + " made: ";
+        message += plural(removed, MODE_LABELS[mode] + " key") + " removed";
+        if (made.length > notParented.length) message += ", parented";
+        if (notParented.length) message += ". Not parented: " + notParented.join(", ");
+        if (notDuplicated.length) message += ". Not duplicated: " + notDuplicated.join(", ");
         setStatus(message);
     }
 
@@ -647,10 +767,7 @@
             };
         }
 
-        var last = false;
-        try {
-            last = ScriptUI.environment.keyboardState.altKey;
-        } catch (e) {}
+        var last = altPressed();
         var source = candidates[last ? candidates.length - 1 : 0];
 
         // Read everything off the source before writing anything.
@@ -767,13 +884,13 @@
         btnShotFolders.helpTip = "Numbered shot bins in the Project panel: SHOT001 … SHOT010.";
 
         // --- strip + parent
-        var stripGroup = win.add("panel", undefined, "Strip keys from duplicate, parent to original");
+        var stripGroup = win.add("panel", undefined, "Duplicate, strip keys, parent to original");
         stripGroup.alignChildren = ["fill", "top"];
         stripGroup.margins = [12, 16, 12, 12];
         stripGroup.spacing = 5;
 
         var hint = stripGroup.add("statictext", undefined,
-            "Select the original and its duplicate(s). Alt-click to swap.");
+            "Already duplicated? Select the original and its duplicate(s). Alt-click to swap.");
         hint.alignment = ["fill", "top"];
 
         var rowA = stripGroup.add("group");
@@ -789,6 +906,12 @@
         var btnPSR = rowB.add("button", undefined, "PSR");
         var btnAll = rowB.add("button", undefined, "All keyframes");
 
+        var dupHint = stripGroup.add("statictext", undefined,
+            "Or select one layer and let it make the duplicate:");
+        dupHint.alignment = ["fill", "top"];
+
+        var btnDuplicate = stripGroup.add("button", undefined, "Duplicate + strip PSR");
+
         var tipSuffix = " from the duplicate, then parent it to the original.";
         btnPosition.helpTip = "Remove Position keyframes (including separated X/Y/Z)" + tipSuffix;
         btnRotation.helpTip = "Remove Rotation keyframes (X/Y/Z and Orientation on 3D layers)" + tipSuffix;
@@ -796,6 +919,10 @@
         btnPSR.helpTip = "Remove Position, Scale and Rotation keyframes" + tipSuffix;
         btnAll.helpTip = "Remove every keyframe on the layer -- transform, effects, masks, " +
             "text, shapes, styles -- but not markers or expressions" + tipSuffix;
+        btnDuplicate.helpTip = "Duplicate the selected layer, remove Position, Scale and Rotation " +
+            "keyframes from the copy and parent it to the layer it came from -- one click, one " +
+            "undo step, nothing to select twice. Alt-click to strip every keyframe on the copy " +
+            "instead of just the transforms. Several selected layers each get their own duplicate.";
 
         // --- transfer expressions
         var transferGroup = win.add("panel", undefined, "Transfer expressions");
@@ -846,6 +973,9 @@
         btnScale.onClick = guarded(function () { stripAndParent("scale", setStatus); });
         btnPSR.onClick = guarded(function () { stripAndParent("psr", setStatus); });
         btnAll.onClick = guarded(function () { stripAndParent("all", setStatus); });
+        btnDuplicate.onClick = guarded(function () {
+            duplicateStripParent(altPressed() ? "all" : "psr", setStatus);
+        });
         btnTransfer.onClick = guarded(function () { transferAndReport(setStatus); });
 
         win.onResizing = win.onResize = function () {

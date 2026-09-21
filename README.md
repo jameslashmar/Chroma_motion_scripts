@@ -33,9 +33,11 @@ The step is there for edits that number in tens or twenties so there's room to i
 
 The same dialog ships standalone as `Scripts/CreateShotFolders.jsx` for File → Scripts. The panel embeds the code rather than looking for that file, so it's a single-file install with nothing to locate on disk.
 
-#### Strip keys from duplicate, parent to original
+#### Duplicate, strip keys, parent to original
 
 Duplicate an animated layer, select the original and the duplicate, click a button. The duplicate loses its keyframes and is parented to the original, so it follows the original's animation rather than carrying its own copy of it. Five buttons: **Position**, **Rotation**, **Scale**, **PSR** (all three) and **All keyframes** (everything on the layer — effects, masks, text, shape contents, layer styles — but not markers, and expressions are left alone).
+
+A sixth, **Duplicate + strip PSR**, does the whole thing from one layer: select the animated layer, click once, and it is duplicated, the copy's Position, Scale and Rotation keys come off and the copy is parented back to it — still one undo step. Nothing to duplicate by hand and nothing to select twice, which is what makes it the one worth putting on a key (see [kBar buttons](#kbar-buttons) below). Alt-click it to strip every keyframe on the copy instead of only the transforms. The new duplicate is left selected, because the duplicate is the layer you go on to animate; several selected layers each get their own, parented to themselves rather than to each other.
 
 The details that matter:
 
@@ -61,11 +63,11 @@ Copies expressions from one layer to others: the expressions only, never keyfram
 
 ### `ScriptUI Panels/Chroma Utilities Mini.jsx`
 
-The same three tools as one row of square buttons, for docking in a strip above the timeline or down the side of the Project panel where a full-width panel won't fit.
+The same tools as one row of square buttons, for docking in a strip above the timeline or down the side of the Project panel where a full-width panel won't fit.
 
 <img src="docs/images/chroma-utilities-mini.png" alt="Chroma Utilities Mini panel docked in After Effects: one row holding a Project section with a shot-folders icon button, and a Parenting section with P, S, R, PSR and a keyframes icon button" width="287">
 
-Three outlined sections: **Project**, holding the Create Shot Folders button; **Parenting**, holding **P**, **S**, **R**, **PSR** and a keyframes icon for every keyframe on the layer; and **Expressions**, holding the transfer button (`=→`). No status line — the result is visible in the comp, so success is silent. Only a refused parent, or an expression that was skipped or won't evaluate on its target, raises a dialog. Everything else behaves exactly as the full panel does, Alt-click included.
+Three outlined sections: **Project**, holding the Create Shot Folders button; **Parenting**, holding **P**, **S**, **R**, **PSR**, a keyframes icon for every keyframe on the layer, and **Dup** for the one-click duplicate-and-parent; and **Expressions**, holding the transfer button (`=→`). No status line — the result is visible in the comp, so success is silent. Only a refused parent, or an expression that was skipped or won't evaluate on its target, raises a dialog. Everything else behaves exactly as the full panel does, Alt-click included.
 
 Both panels can be installed side by side; they are independent, and the mini one carries its own copy of the tool code so it stays a single file. The icons are embedded in the script as PNG bytes rather than sitting in a folder beside it, for the same reason.
 
@@ -94,6 +96,18 @@ Worth knowing before relying on it: deleting cached frames under a running After
 
 Settings persist between sessions via `app.settings`.
 
+### `kbar/`
+
+One-action copies of the same tools, for [kBar](https://aescripts.com/kbar/) — the aescripts toolbar extension — or for a plain keyboard shortcut. A kBar button runs a `.jsx` file and gives it nowhere to put a status line, so each of these does exactly one thing, says nothing when it works, and raises a dialog only when something could not be done.
+
+`ChromaDuplicateStripPSR.jsx` is the one worth a key: it replaces duplicate → select both → click PSR with a single press. The rest are the panel's other buttons one file each, plus `ChromaDuplicateStripAllKeys.jsx`.
+
+None of them reads Alt, unlike the panels. A shortcut with Alt in it — `Ctrl+Alt+D`, say — holds Alt down at the moment the script would look, so the button would silently do the other thing every time. One button, one action; the panels are still there when the swap is wanted.
+
+They are **generated**, not hand-written: `build_kbar.py` lifts the tool functions out of `Chroma Utilities Mini.jsx`, works out the transitive closure of what each entry point uses, and wraps one call in an IIFE. Change the panel, re-run it, and the buttons follow; `--check` exits non-zero if any is out of date. The panels already carry two copies of the tool logic on purpose, so each stays a one-file install — nine hand-maintained copies on top of that is where they would drift.
+
+Install and per-button labels: [`aftereffects/kbar/README.md`](aftereffects/kbar/README.md). Not yet run inside kBar.
+
 ### Installing the After Effects scripts
 
 Copy the contents of `aftereffects/` into the matching folders inside the After Effects install:
@@ -106,6 +120,8 @@ macOS     /Applications/Adobe After Effects <ver>/Scripts/
 Needs administrator rights on Windows. Scripts placed here survive After Effects updates.
 
 Restart After Effects afterwards. Panels then appear at the bottom of the **Window** menu; plain scripts under **File → Scripts**.
+
+`kbar/` is the exception: it is not part of After Effects' own layout, so don't copy the folder in. Leave it somewhere that an After Effects update won't wipe and point kBar at it, or copy the `.jsx` files — the files, not the folder — into `Scripts/` to get them under **File → Scripts** where **Edit → Keyboard Shortcuts** can bind a key to each.
 
 `Chroma Purge After Render` needs **Preferences → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled before it can clear the disk cache. Everything else in it works without that.
 
