@@ -96,6 +96,16 @@ Worth knowing before relying on it: deleting cached frames under a running After
 
 Settings persist between sessions via `app.settings`.
 
+### `Scripts/ExportShapesToC4D.jsx`
+
+The After Effects half of getting a shape layer into Cinema 4D with its animation. Run it with a comp open, choose the selected shape layers or every shape layer in the comp, pick the work area or the whole comp, and it writes a JSON file that [`import_ae_shapes-AE2C4D.py`](#import_ae_shapes-ae2c4dpy) rebuilds on the C4D side.
+
+Adobe's own Cinema 4D exporter brings a shape layer across as an empty Null, because it carries layer transforms and not path data. This writes the paths themselves, sampled on every frame, along with strokes, Trim Paths and group transforms. Every value is read after expressions, so expression-driven animation comes across baked.
+
+Scripting has no way to ask for a layer's world matrix, so the script borrows the expression engine: four temporary 3D Point Controls evaluate `toWorld()` at the origin and along each axis, and are removed again when it's done. Parents, 3D rotation, orientation and auto-orient all come along with it. It's one undo step, and a locked layer is unlocked for the duration and relocked.
+
+Needs **Allow Scripts to Write Files and Access Network** enabled, like the purge panel.
+
 ### `kbar/`
 
 One-action copies of the same tools, for [kBar](https://aescripts.com/kbar/) — the aescripts toolbar extension — or for a plain keyboard shortcut. A kBar button runs a `.jsx` file and gives it nowhere to put a status line, so each of these does exactly one thing, says nothing when it works, and raises a dialog only when something could not be done.
@@ -174,7 +184,21 @@ The geometry, interpolation and blend modes live in a header with no After Effec
 
 Run from **Extensions → User Scripts**. See [Installing the Python scripts](#installing-the-python-scripts) below.
 
-The `-OM2XP` / `-XP2OM` suffixes are direction: Object Manager → XPresso, and back again.
+The `-OM2XP` / `-XP2OM` / `-AE2C4D` suffixes are direction: Object Manager → XPresso, back again, and After Effects → Cinema 4D.
+
+### `import_ae_shapes-AE2C4D.py`
+
+Rebuilds After Effects shape layers in Cinema 4D from the file [`ExportShapesToC4D.jsx`](#scriptsexportshapestoc4djsx) writes, animated.
+
+- **Paths become bezier splines**, one per path, under a Null named after the layer. An animated path is keyed with Point Level Animation. Keys that change nothing are dropped, so a path that holds still for forty frames costs two keys, not forty.
+- **Strokes become Sweeps.** Stroke width becomes the radius of a circle profile, through a **1 px = _n_ cm** scale set in the dialog, and is keyed if it animates. Group scale above the stroke scales the width, as it does in After Effects. Round and projecting caps become outside bevels exactly half the stroke width deep, so the tube reaches past the path's end by the same amount AE's cap does.
+- **Trim Paths drive Start and End Growth.** Sweep growth runs on true arc length, so percentages match. Offset is the awkward part, because a trim window can slide past the first vertex and come back round, and a Sweep's growth cannot wrap. A closed path whose window ever crosses its first vertex is swept along a copy of the loop that runs round twice, so growth passes through the seam in one continuous tube. An open path gets a second `(wrap)` Sweep for the piece that has come round to the start again. **Trim Multiple Shapes: Individually** is honoured too: the window is shared out across the paths by length, top path first.
+- **Rectangles, ellipses, stars and polygons** are converted to beziers with After Effects' own start vertex and direction, so a trim draws on from the same place without running Convert to Bezier Path first.
+- **Layer transform:** bake it into the points (exact, including 3D layers and parent chains), or animate it on the layer's Null (cleaner when a static shape just moves around). The Null can't hold skew, and the importer says so if the transform has any.
+- **Origin** at comp centre or top-left, the layer's in and out points become visibility keys on its Null, and the project frame rate and range can be set to match the comp.
+- Merge Paths, Repeater, Offset Paths and the other path operators aren't reproduced. The import finishes with a list of anything it skipped, rather than quietly ignoring it.
+
+One Cinema 4D detail worth knowing if you ever write splines from Python: **C4D evaluates a bezier tangent at 4/3 of its length.** A cubic bezier's control offset has to be multiplied by ¾ before `SetTangent`, or every curve bulges outwards. A circle of radius 100 comes out 110 across the diagonal, and trims no longer land where they should. You can see it in C4D's own Circle: made editable, its tangents are 0.415 r, not the textbook 0.552 r.
 
 ### `find_xpresso_node-OM2XP.py`
 
