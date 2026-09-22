@@ -143,10 +143,13 @@ to drift, which is what the generator is for.
 
 ## Status
 
-**The import works** — confirmed in kBar 3.1.5 on 2026-09-22, all nine buttons arriving
-as one toolbar. The first attempt got the labels wrong: `PSR`, `Exp` and `Shots` came out
-as "PS / R", "Ex / p" and "Sho / ts", which is what the wrapping table above now exists
-to prevent, and the generator now refuses.
+**The import works, and the labels render correctly** — both confirmed in kBar 3.1.5 on
+2026-09-22. The first attempt got the labels wrong: `PSR`, `Exp` and `Shots` came out as
+"PS / R", "Ex / p" and "Sho / ts". That is what the wrapping table above exists to
+prevent and what the generator now refuses to build.
+
+Only the labels changed in the fix — all nine scripts are byte-identical either side of
+it, so an already-imported toolbar needed three buttons renamed rather than a re-import.
 
 Every script is checked to parse and to define every name it calls, and the logic is
 lifted verbatim from the Mini panel rather than rewritten. The `.kbar` is validated
