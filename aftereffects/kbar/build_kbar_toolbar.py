@@ -62,6 +62,46 @@ BUTTON_TYPE_INVOKE_SCRIPT = 1
 ICON_TYPE_TEXT = 0
 
 
+def wrap_for_rendering(label):
+    """kBar's own line-breaking for a text icon, from `wrapForRendering`.
+
+    It breaks on **character count alone**. Spaces and newlines mean nothing
+    to it, so "PSR" comes out as "PS" / "R" and "Shots" as "Sho" / "ts". A
+    label only looks right when its space happens to land on the boundary,
+    which is a thing to design for rather than discover in a screenshot."""
+    n = len(label)
+    if not label:
+        return []
+    if n <= 2:
+        return [label]
+    if n <= 4:
+        return [label[0:2], label[2:4]]
+    if n <= 6:
+        return [label[0:3], label[3:6]]
+    if n <= 8:
+        return [label[0:4], label[4:8]]
+    if n <= 12:
+        return [label[0:6], label[6:12]]
+    return [label[0:8], label[8:16]]
+
+
+def check_label(label):
+    """Complain about a label kBar would break mid-word, or draw wide.
+
+    Each line goes into its own div and is XML-escaped but not otherwise
+    touched, so a space at the edge of a line collapses in the HTML and a
+    label whose space lands on the boundary reads correctly."""
+    problems = []
+    if len(label) > 8:
+        problems.append("over 8 characters, so kBar draws it wide and this "
+                        "button will not match the others")
+    words = label.split()
+    rendered = [line.strip() for line in wrap_for_rendering(label)]
+    if any(line and line not in words for line in rendered):
+        problems.append("breaks mid-word: kBar renders it %r" % (" / ".join(rendered)))
+    return problems
+
+
 def button(spec, index):
     """One InvokeScript button pointing at the copy baked in beside it."""
     return {
@@ -81,6 +121,14 @@ def main():
     if missing:
         sys.exit("build_kbar_toolbar: run build_kbar.py first - missing %s"
                  % ", ".join(missing))
+
+    # A bad label is invisible until the toolbar is on screen, so refuse it here.
+    bad = [(s["label"], p) for s in SCRIPTS for p in check_label(s["label"])]
+    if bad:
+        for label, problem in bad:
+            print("  BAD LABEL  %-10r %s" % (label, problem), file=sys.stderr)
+        sys.exit("build_kbar_toolbar: %d label problem(s) - fix SCRIPTS in build_kbar.py"
+                 % len(bad))
 
     manifest = {
         "version": 1,

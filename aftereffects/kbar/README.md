@@ -16,10 +16,10 @@ dialog only when something could not be done.
 | `ChromaStripPosition.jsx` | `P` | Strips Position keys off the duplicate, parents it to the original | original + duplicate(s) |
 | `ChromaStripScale.jsx` | `S` | Strips Scale keys, parents | original + duplicate(s) |
 | `ChromaStripRotation.jsx` | `R` | Strips Rotation keys, parents | original + duplicate(s) |
-| `ChromaStripPSR.jsx` | `PSR` | Strips all three, parents | original + duplicate(s) |
+| `ChromaStripPSR.jsx` | `All PSR` | Strips all three, parents | original + duplicate(s) |
 | `ChromaStripAllKeys.jsx` | `All keys` | Strips every keyframe, parents | original + duplicate(s) |
-| `ChromaTransferExpressions.jsx` | `Exp` | Copies every expression from the source layer to the targets | source, then target(s) |
-| `ChromaCreateShotFolders.jsx` | `Shots` | Opens the numbered-shot-bins dialog | nothing |
+| `ChromaTransferExpressions.jsx` | `Ex` | Copies every expression from the source layer to the targets | source, then target(s) |
+| `ChromaCreateShotFolders.jsx` | `Shot bin` | Opens the numbered-shot-bins dialog | nothing |
 
 `ChromaDuplicateStripPSR` is the one worth a key. It replaces duplicate → select both →
 click PSR with a single press, and it is one undo step.
@@ -58,8 +58,29 @@ macOS     ~/Documents/Chroma/kbar/
 Then in kBar: **pencil → Add Button → JSX/JSXBIN file** → browse to the script → give it
 a label or an icon → **OK**. kBar ships its own icon library and takes custom PNG or SVG,
 which is why there are no icons in this folder; the suggested labels are in the table
-above. Keep a text label to **8 characters or fewer** or kBar draws the button wide — a
-newline in the label gives a second row instead.
+above.
+
+### Picking a text label
+
+kBar breaks a text label into two rows **by character count alone**. It does not look for
+spaces, and a newline in the label means nothing to it:
+
+| length | becomes |
+|---|---|
+| 1–2 | one row |
+| 3–4 | 2 + 2 |
+| 5–6 | 3 + 3 |
+| 7–8 | 4 + 4 |
+| 9–12 | 6 + 6 (and drawn **wide**, so the button stops matching its neighbours) |
+
+So `PSR` renders as "PS / R" and `Shots` as "Sho / ts". A label only reads correctly when
+it is **two characters or fewer**, or when its space lands exactly on the split — which is
+why the labels above are `All PSR` (4 + 4, space on the boundary) and `Ex` rather than
+`PSR` and `Exp`. A space at the edge of a row collapses in kBar's HTML, so it costs
+nothing.
+
+`build_kbar_toolbar.py` refuses to build a toolbar whose labels break mid-word or run
+wide, since neither is visible until the toolbar is on screen.
 
 **For a keyboard shortcut instead:** copy the `.jsx` files — the files, not this folder —
 into the After Effects install:
@@ -90,7 +111,12 @@ and the schema migrator. A `.kbar` is a zip holding `manifest.json` (version 1, 
 `toolbar`, plus `scripts`/`presets`/`shell` arrays naming what was baked in) and, when
 baked, `scripts/<file>.jsx`. A script button is `type: 1` (`InvokeScript`) and points at
 its baked copy with `filePath: "kzip://scripts/<index>"`. An icon is
-`{type, path, color}`, where type `0` is text and `path` **is** the label.
+`{type, path, color}`, where type `0` is text and `path` **is** the label — not a path,
+despite the name.
+
+Two things the format will not tell you and a screenshot will: all seven modifier keys
+have to be present even when every one is `null`, and the label wrapping above is by
+character count with no regard for words.
 
 If an import ever fails, re-read those two functions in the installed kBar before
 assuming `build_kbar_toolbar.py` is wrong — a future kBar could move the format.
@@ -117,11 +143,14 @@ to drift, which is what the generator is for.
 
 ## Status
 
-Written 2026-09-21. Every script is checked to parse and to define every name it calls,
-and the logic is lifted verbatim from the Mini panel rather than rewritten. The `.kbar`
-is validated against kBar 3.1.5's own import assertions — archive integrity, manifest
-shape, every `kzip://scripts/N` index in range and its baked file present.
+**The import works** — confirmed in kBar 3.1.5 on 2026-09-22, all nine buttons arriving
+as one toolbar. The first attempt got the labels wrong: `PSR`, `Exp` and `Shots` came out
+as "PS / R", "Ex / p" and "Sho / ts", which is what the wrapping table above now exists
+to prevent, and the generator now refuses.
 
-**Not yet imported into kBar, and none of the buttons has been clicked.** The format was
-read out of kBar's source rather than round-tripped through its own export, so the
-import is the first real test.
+Every script is checked to parse and to define every name it calls, and the logic is
+lifted verbatim from the Mini panel rather than rewritten. The `.kbar` is validated
+against kBar's own import assertions — archive integrity, manifest shape, every
+`kzip://scripts/N` index in range and its baked file present.
+
+**None of the buttons has been clicked yet**, in kBar or anywhere else.

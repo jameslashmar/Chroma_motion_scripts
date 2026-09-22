@@ -133,7 +133,7 @@ SCRIPTS = [
     {
         "file": "ChromaStripPSR.jsx",
         "title": "Chroma - Strip PSR keys + parent",
-        "label": "PSR",
+        "label": "All PSR",
         "entry": 'stripAndParent("psr");',
         "blurb": [
             "Select the original layer and its duplicate(s). The duplicate loses",
@@ -156,7 +156,7 @@ SCRIPTS = [
     {
         "file": "ChromaTransferExpressions.jsx",
         "title": "Chroma - Transfer expressions",
-        "label": "Exp",
+        "label": "Ex",
         "entry": "transferAndReport();",
         "blurb": [
             "Click the source layer, then the target(s), and run this. Every",
@@ -170,7 +170,7 @@ SCRIPTS = [
     {
         "file": "ChromaCreateShotFolders.jsx",
         "title": "Chroma - Create Shot Folders",
-        "label": "Shots",
+        "label": "Shot bin",
         "entry": "createShotFolders();",
         "blurb": [
             "The Create Shot Folders dialog: numbered shot bins in the Project",
