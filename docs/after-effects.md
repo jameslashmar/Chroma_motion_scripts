@@ -153,14 +153,21 @@ Unlike Adobe's, which is GPU-only and refuses to render without acceleration, th
 
 This is an independent implementation of the standard maths — equirectangular projection plus inverse-distance-weighted interpolation. No Adobe code is reproduced.
 
-#### Building and installing it
+#### Installing it
 
-Source only; there's no binary in the repo. It needs the After Effects SDK and MSVC, then:
+**The built plug-in is in the repo** — [`plugins/vr_color_gradients_3d/ChromaVRGradient3D.aex`](../plugins/vr_color_gradients_3d/). Copy it into `Support Files\Plug-ins\Effects\`, where it survives After Effects updates, and restart. The effect then appears under **Effect → Immersive Video**, alongside After Effects' own VR effects. Windows x64 only; the source carries the Mac entry points but no Mac build has been made.
+
+Shipping source alone was the wrong call for this one: everybody who wants the effect is a motion designer, not a C++ developer.
+
+#### Building it yourself
+
+Only if you're changing it. The source moved into [`src/`](../plugins/vr_color_gradients_3d/src/) when the binary took its place, and needs the After Effects SDK and MSVC with the C++ workload:
 
 ```powershell
+cd src
 .\build.ps1 -Install     # builds, then copies into After Effects (elevates)
 ```
 
-SDK, Visual Studio and After Effects locations are all parameters — pass your own if the defaults don't match. The resulting `.aex` belongs in `Support Files\Plug-ins\Effects\`, where it survives After Effects updates, and needs a restart. The effect then appears under **Effect → Immersive Video**.
+The build overwrites the committed `.aex` one level up rather than hiding in a `build/` folder, so a rebuild updates the copy people download and `git status` says when it has drifted. The SDK, Visual Studio and After Effects locations are all found at run time — `vswhere`, a search for `PiPLtool.exe`, and the highest-numbered AE install — with `-SdkRoot`, `-VsRoot` and `-AeRoot` to override. They were hardcoded to one workstation until a second machine came along and the paths silently stopped existing.
 
 The geometry, interpolation and blend modes live in a header with no After Effects types in it, so `tests/` compiles and runs them under plain `g++` — including an offline renderer that writes equirect stills. Its [README](../plugins/vr_color_gradients_3d/README.md) covers the parameters in full, and the SDK and scripting traps worth knowing about, among them a bug in the SDK's own `PF_ADD_POINT_3D` macro, which discards the Z default you pass it.

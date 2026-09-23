@@ -1,0 +1,10 @@
+# Build intermediates. The compiled ChromaVRGradient3D.aex is deliberately
+# NOT ignored - it sits one level up, committed, because the people who want
+# this effect are not going to install Visual Studio to get it.
+obj/
+
+# Test binaries and rendered previews
+tests/*.exe
+tests/*.obj
+tests/*.ppm
+tests/*.png

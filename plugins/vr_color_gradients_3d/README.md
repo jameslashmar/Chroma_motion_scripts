@@ -85,21 +85,44 @@ One 3D point parameter per point; this popup decides how its X/Y/Z is read.
 
 ---
 
-## Building
+## Installing
 
-Needs the After Effects SDK and MSVC. Both paths are `build.ps1` parameters if
-yours differ.
+**`ChromaVRGradient3D.aex` in this folder is the built plug-in.** Copy it into
+After Effects and restart:
+
+```
+Windows   C:\Program Files\Adobe\Adobe After Effects <ver>\Support Files\Plug-ins\Effects\
+```
+
+It then appears under **Effect → Immersive Video**, alongside After Effects' own VR effects. Plug-ins put there survive After
+Effects updates. Needs administrator rights on Windows.
+
+Windows x64 only. The source carries the Mac entry points in its PiPL and has
+no Windows-specific rendering code, but there is no Mac build here — that needs
+Xcode and someone to test it.
+
+## Building it yourself
+
+Only necessary if you are changing it. The source is in [`src/`](src/), and
+needs the After Effects SDK and MSVC with the C++ workload.
 
 ```powershell
-.\build.ps1                 # build to .\build\ChromaVRGradient3D.aex
+cd src
+.\build.ps1                 # build to ..\ChromaVRGradient3D.aex
 .\build.ps1 -Install        # build, then copy into After Effects (elevates)
 .\build.ps1 -Clean          # wipe intermediates first
 ```
 
-Defaults: SDK `H:\AE_SDK\ae25.6_61.64bit.AfterEffectsSDK\Examples`, Visual
-Studio `G:\VSStudio\Community`, AE 2026 in the standard location. Plug-ins
-installed into AE's `Support Files\Plug-ins\Effects` survive AE updates.
-**Restart After Effects after installing.**
+The build writes over the committed `.aex` one level up rather than into a
+`build/` folder of its own, so a rebuild updates the copy people actually
+download and `git status` says when it has drifted.
+
+The SDK, Visual Studio and After Effects are all **found at run time** —
+`vswhere` for VS, a search for `PiPLtool.exe` for the SDK, the highest-numbered
+install for AE — with `-SdkRoot`, `-VsRoot` and `-AeRoot` to override. They used
+to be hardcoded to one workstation, which broke the first time this was built on
+a second: Visual Studio was on `G:` on one machine and `H:` on the other, and
+the script only said so at the point of failure.
 
 The script drives `cl` / `PiPLtool` / `rc` / `link` directly rather than going
 through MSBuild, because the PiPL resource needs a three-stage preprocess that
@@ -108,11 +131,11 @@ is far easier to follow in a script than in a `.vcxproj` CustomBuild block.
 ## Tests
 
 The geometry, colour interpolation and blend modes live in
-`ChromaGradientMath.h`, which has no After Effects types in it at all and so
+`src/ChromaGradientMath.h`, which has no After Effects types in it at all and so
 can be exercised directly:
 
 ```bash
-cd tests
+cd src/tests
 g++ -std=c++17 -O2 -I.. test_math.cpp -o test_math && ./test_math
 g++ -std=c++17 -O2 -I.. preview.cpp  -o preview   && ./preview
 ```

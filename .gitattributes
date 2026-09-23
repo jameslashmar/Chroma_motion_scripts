@@ -5,3 +5,7 @@
 # guess right, but "almost certainly" is not what you want protecting an
 # archive: one normalised byte and the import fails with nothing to point at.
 *.kbar binary
+
+# The compiled effect plug-in. Same reasoning as the .kbar: a DLL must not be
+# line-ending normalised, and text=auto should not be left to guess at it.
+*.aex binary

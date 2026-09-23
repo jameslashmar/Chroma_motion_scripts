@@ -14,10 +14,61 @@
 param(
     [switch]$Install,
     [switch]$Clean,
-    [string]$SdkRoot = 'H:\AE_SDK\ae25.6_61.64bit.AfterEffectsSDK\Examples',
-    [string]$VsRoot  = 'G:\VSStudio\Community',
-    [string]$AeRoot  = 'C:\Program Files\Adobe\Adobe After Effects 2026'
+    [string]$SdkRoot,
+    [string]$VsRoot,
+    [string]$AeRoot
 )
+
+# These three used to be hardcoded to one workstation. They are found at run
+# time instead, because they do move: Visual Studio was on G: when this was
+# written and is on H: on the next machine, and the script only mentioned it at
+# the point of failure. Pass any of the parameters above to override.
+
+function Resolve-VsRoot {
+    # vswhere ships with every VS 2017+ installer and knows where VS actually
+    # is, which a literal path does not.
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path $vswhere) {
+        $found = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath 2>$null
+        if ($found) { return ($found | Select-Object -First 1) }
+        $any = & $vswhere -latest -products * -property installationPath 2>$null
+        if ($any) { return ($any | Select-Object -First 1) }
+    }
+    foreach ($guess in @(
+        'C:\Program Files\Microsoft Visual Studio\2022\Community',
+        'C:\Program Files\Microsoft Visual Studio\2022\Professional')) {
+        if (Test-Path (Join-Path $guess 'VC\Auxiliary\Build\vcvars64.bat')) { return $guess }
+    }
+    return $null
+}
+
+function Resolve-SdkRoot {
+    # The Examples folder is the one with PiPLtool.exe under Resources.
+    foreach ($drive in @('H:\', 'G:\', 'C:\', 'D:\')) {
+        $base = Join-Path $drive 'AE_SDK'
+        if (-not (Test-Path $base)) { continue }
+        $hit = Get-ChildItem $base -Recurse -Filter 'PiPLtool.exe' -ErrorAction SilentlyContinue |
+               Select-Object -First 1
+        if ($hit) { return (Split-Path (Split-Path $hit.FullName -Parent) -Parent) }
+    }
+    return $null
+}
+
+function Resolve-AeRoot {
+    $base = 'C:\Program Files\Adobe'
+    if (Test-Path $base) {
+        $hit = Get-ChildItem $base -Directory -Filter 'Adobe After Effects *' -ErrorAction SilentlyContinue |
+               Sort-Object Name -Descending | Select-Object -First 1
+        if ($hit) { return $hit.FullName }
+    }
+    return $null
+}
+
+if (-not $SdkRoot) { $SdkRoot = Resolve-SdkRoot }
+if (-not $VsRoot)  { $VsRoot  = Resolve-VsRoot }
+if (-not $AeRoot)  { $AeRoot  = Resolve-AeRoot }
 
 # cl.exe and rc.exe both chat on stderr even when they succeed, so native
 # stderr must not be fatal here. Every step below is checked explicitly via
@@ -30,13 +81,23 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -Er
 $Here    = $PSScriptRoot
 $Name    = 'ChromaVRGradient3D'
 $ObjDir  = Join-Path $Here 'obj'
-$OutDir  = Join-Path $Here 'build'
+# The build lands on the committed .aex one level up rather than in a build/
+# folder of its own. That is the copy people download, so a rebuild updates it
+# in place and `git status` says when it has gone stale.
+$OutDir  = Split-Path $Here -Parent
 $Target  = Join-Path $OutDir "$Name.aex"
 
 function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Fail($msg) { Write-Host "!!! $msg" -ForegroundColor Red; exit 1 }
 
 # --- sanity ------------------------------------------------------------
+if (-not $SdkRoot) { Fail 'AE SDK not found. Pass -SdkRoot <path to the SDK Examples folder>.' }
+if (-not $VsRoot)  { Fail 'Visual Studio with the C++ workload not found. Pass -VsRoot <VS install path>.' }
+if (-not $AeRoot -and $Install) { Fail 'After Effects not found. Pass -AeRoot <AE install path>.' }
+Write-Host "    SDK : $SdkRoot" -ForegroundColor DarkGray
+Write-Host "    VS  : $VsRoot"  -ForegroundColor DarkGray
+if ($AeRoot) { Write-Host "    AE  : $AeRoot" -ForegroundColor DarkGray }
+
 if (-not (Test-Path $SdkRoot)) { Fail "AE SDK not found at $SdkRoot" }
 $PiPLTool = Join-Path $SdkRoot 'Resources\PiPLtool.exe'
 if (-not (Test-Path $PiPLTool)) { Fail "PiPLtool.exe not found at $PiPLTool" }
@@ -125,7 +186,10 @@ if ($Install) {
         Write-Host "    installed. Restart After Effects." -ForegroundColor Green
     } catch {
         Write-Host "    plain copy denied - retrying elevated via sudo" -ForegroundColor Yellow
-        & sudo cp "$Target" "$dest\"
+        # Not `sudo cp`: cp is a shell alias, and sudo starts a new process
+        # where only real executables exist. It fails with "Command not found"
+        # and, in Force New Window mode, does so out of sight.
+        & sudo pwsh -NoProfile -Command "Copy-Item -LiteralPath '$Target' -Destination '$dest' -Force"
         Start-Sleep -Seconds 2
         $landed = Join-Path $dest "$Name.aex"
         if (Test-Path $landed) {

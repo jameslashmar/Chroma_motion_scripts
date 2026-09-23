@@ -26,7 +26,7 @@ Each area has its own page, because each one goes deep enough to deserve it.
 | **Chroma Purge After Render** | Watches a render and clears the disk cache when it finishes |
 | **Export Shapes to C4D** | Shape layers to JSON with their animation baked, for the Cinema 4D importer |
 | **kBar buttons** | The same tools as nine one-action scripts, and an importable toolbar — [own page](aftereffects/kbar/README.md) |
-| **VR Color Gradients 3D** | A C++ effect plugin: the stock VR gradient, with a Z axis on every point — [own page](plugins/vr_color_gradients_3d/README.md) |
+| **VR Color Gradients 3D** | A C++ effect plugin: the stock VR gradient, with a Z axis on every point. **Built `.aex` included** — [own page](plugins/vr_color_gradients_3d/README.md) |
 
 ### [Cinema 4D →](docs/cinema-4d.md)
 
@@ -59,6 +59,8 @@ Each area has its own page, because each one goes deep enough to deserve it.
 
 **kBar** — import [`aftereffects/kbar/Chroma Utilities.kbar`](aftereffects/kbar/) and all nine buttons arrive as one toolbar with the scripts inside it, so there is nothing to install first: [kBar → Installing](aftereffects/kbar/README.md#installing).
 
+**Plug-ins** — [`plugins/vr_color_gradients_3d/ChromaVRGradient3D.aex`](plugins/vr_color_gradients_3d/) is prebuilt. Copy it into `Support Files\Plug-ins\Effects\` and restart; it appears under **Effect → Immersive Video**.
+
 **Windows** — double-click. They all prompt for their input, so there are no arguments to remember.
 
 ---
@@ -69,6 +71,6 @@ The After Effects scripts were written against **After Effects 2026** using Exte
 
 The XPresso scripts were written and tested against **Cinema 4D 2026 / Python 3.11**, using the classic `c4d` API and `c4d.modules.graphview`. Several API surfaces changed in ways that break older forum examples — those differences are documented in [docs/xpresso-api-notes.md](docs/xpresso-api-notes.md), which is worth reading before writing any new XPresso tooling.
 
-`VR Color Gradients 3D` is a compiled effect plugin rather than a script, built against the **After Effects SDK 25.6** and shipped as source. The build script is Windows/MSVC; the source itself is portable and carries the Mac entry points in its PiPL, but only the Windows build has been exercised.
+`VR Color Gradients 3D` is a compiled effect plugin rather than a script, built against the **After Effects SDK 25.6**. The built **Windows x64 `.aex` ships in the repo** — nobody should need Visual Studio to use an effect — with the source beside it in `src/`. That source carries the Mac entry points in its PiPL and has no Windows-specific rendering code, but no Mac build has been made.
 
 The batch and command files are Windows-only.
