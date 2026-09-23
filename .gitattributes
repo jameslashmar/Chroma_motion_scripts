@@ -9,3 +9,15 @@
 # The compiled effect plug-in. Same reasoning as the .kbar: a DLL must not be
 # line-ending normalised, and text=auto should not be left to guess at it.
 *.aex binary
+
+# Shell scripts must keep LF even when checked out on Windows, or bash
+# rejects them with a \r it cannot see.
+*.sh text eol=lf
+
+# The macOS plug-in bundle - every file in it, not just the Mach-O. The
+# ad-hoc signature hashes file contents, and _CodeSignature/CodeResources and
+# Info.plist are text: let text=auto give either of them CRLF on a Windows
+# checkout and the signature no longer matches, so the effect is refused on
+# Apple Silicon without ever saying why.
+plugins/vr_color_gradients_3d/ChromaVRGradient3D.plugin/** binary
+*.rsrc binary

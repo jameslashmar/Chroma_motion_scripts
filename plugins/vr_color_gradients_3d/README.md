@@ -87,24 +87,40 @@ One 3D point parameter per point; this popup decides how its X/Y/Z is read.
 
 ## Installing
 
-**`ChromaVRGradient3D.aex` in this folder is the built plug-in.** Copy it into
-After Effects and restart:
+Both platforms are built and in this folder. Copy the one you need into After
+Effects and restart:
 
 ```
-Windows   C:\Program Files\Adobe\Adobe After Effects <ver>\Support Files\Plug-ins\Effects\
+Windows   ChromaVRGradient3D.aex      -> C:\Program Files\Adobe\Adobe After Effects <ver>\Support Files\Plug-ins\Effects\
+macOS     ChromaVRGradient3D.plugin   -> /Applications/Adobe After Effects <ver>/Plug-ins/Effects/
 ```
 
-It then appears under **Effect → Immersive Video**, alongside After Effects' own VR effects. Plug-ins put there survive After
-Effects updates. Needs administrator rights on Windows.
+It then appears under **Effect → Immersive Video**, alongside After Effects'
+own VR effects. Plug-ins put there survive After Effects updates. Needs
+administrator rights on both — on macOS that means `sudo cp -R`.
 
-Windows x64 only. The source carries the Mac entry points in its PiPL and has
-no Windows-specific rendering code, but there is no Mac build here — that needs
-Xcode and someone to test it.
+The macOS build is a **universal bundle**, arm64 and x86_64, and is **ad-hoc
+signed**. Do not re-zip or rewrite anything inside it: the signature hashes the
+file contents, and an unsigned bundle is refused on Apple Silicon *silently* —
+the effect simply never appears in the menu.
+
+## Extras
+
+- [`examples/BuildWorldXYZDemo.jsx`](examples/BuildWorldXYZDemo.jsx) — builds a
+  worked World XYZ scene: an equirect comp whose gradient points are driven by
+  3D nulls, with one light keyframed past the viewer so the depth falloff is
+  visible without touching anything. **File → Scripts → Run Script File**.
+- [`../../aftereffects/Scripts/VRGradient3DLinkNulls.jsx`](../../aftereffects/Scripts/VRGradient3DLinkNulls.jsx)
+  — select a layer carrying the effect and it gives every live point its own
+  null, placed exactly where the point already is so nothing moves. 2D or 3D,
+  optionally grouped under one parent. A point is a parameter and cannot be
+  parented or linked to a camera; a null can.
 
 ## Building it yourself
 
-Only necessary if you are changing it. The source is in [`src/`](src/), and
-needs the After Effects SDK and MSVC with the C++ workload.
+Only necessary if you are changing it. The source is in [`src/`](src/).
+
+**Windows** — needs the After Effects SDK and MSVC with the C++ workload:
 
 ```powershell
 cd src
@@ -112,6 +128,22 @@ cd src
 .\build.ps1 -Install        # build, then copy into After Effects (elevates)
 .\build.ps1 -Clean          # wipe intermediates first
 ```
+
+**macOS** — needs the After Effects SDK and Xcode:
+
+```bash
+cd src
+./build-mac.sh              # build to ../ChromaVRGradient3D.plugin
+./build-mac.sh --install    # build, then copy into After Effects (needs sudo)
+./build-mac.sh --clean      # wipe intermediates first
+```
+
+Same three stages either way, but macOS wants a bundle rather than a flat
+`.aex`, and the PiPL goes through `Rez` instead of `PiPLtool` + `rc`. The
+bundle's `CFBundlePackageType` of `eFKT` and signature `FXTC` are what mark it
+as an effect; without them After Effects never looks at it. The `.r` already
+carried `CodeMacIntel64` and `CodeMacARM64`, so nothing in the source needed
+changing to build for the Mac.
 
 The build writes over the committed `.aex` one level up rather than into a
 `build/` folder of its own, so a rebuild updates the copy people actually
