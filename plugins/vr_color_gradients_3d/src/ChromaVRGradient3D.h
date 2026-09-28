@@ -28,7 +28,7 @@
 #include "Smart_Utils.h"
 
 #define MAJOR_VERSION	1
-#define MINOR_VERSION	1
+#define MINOR_VERSION	2
 #define BUG_VERSION		0
 #define STAGE_VERSION	PF_Stage_RELEASE
 #define BUILD_VERSION	1
@@ -56,6 +56,8 @@ enum {
 	PARAM_GRADIENT_POWER,		/* inverse-distance-weighting exponent		*/
 	PARAM_GRADIENT_BLEND,		/* 0 % = hard cells, 100 % = smooth mix		*/
 
+	PARAM_CREATE_NULLS,			/* button: link every live point to a null	*/
+
 	PARAM_POINTS_TOPIC,
 
 	PARAM_POINT_1,	PARAM_COLOR_1,	PARAM_ALPHA_1,
@@ -71,6 +73,7 @@ enum {
 
 	PARAM_OPACITY,				/* percent									*/
 	PARAM_BLEND_MODE,			/* popup									*/
+	PARAM_ALPHA_CUTS_LAYER,		/* checkbox: alpha makes the layer see-through */
 
 	PARAM_COUNT
 };
@@ -181,6 +184,7 @@ typedef struct {
 	A_long				layout;
 	A_long				space;
 	A_long				blend_mode;
+	A_long				alpha_cuts_layer;	/* bool							*/
 
 	PF_FpLong			hfov;			/* radians							*/
 	PF_FpLong			vfov;			/* radians							*/

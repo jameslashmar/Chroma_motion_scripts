@@ -11,9 +11,11 @@
 
 #include "ChromaVRGradient3D.h"
 #include "ChromaGradientMath.h"
+#include "CreateNullsScript.h"
 
 #include <cmath>
 #include <cstring>
+#include <string>
 
 /* ------------------------------------------------------------------ */
 /*  About / GlobalSetup                                                */
@@ -34,6 +36,10 @@ static PF_Err About(
 
 	return PF_Err_NONE;
 }
+
+/*	AEGP id for the script and stream calls behind the Create Nulls button.
+	Set once at global setup and only read afterwards.					*/
+static AEGP_PluginID gAEGPPluginID = 0;
 
 static PF_Err GlobalSetup(
 	PF_InData		*in_data,
@@ -56,6 +62,13 @@ static PF_Err GlobalSetup(
 		PF_OutFlag2_SUPPORTS_SMART_RENDER |
 		PF_OutFlag2_FLOAT_COLOR_AWARE |
 		PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
+
+	/*	Only the button needs this, so failing to register is not fatal:
+		the effect still renders, and the button reports the problem.	*/
+	AEGP_SuiteHandler suites(in_data->pica_basicP);
+	if (suites.UtilitySuite6()->AEGP_RegisterWithAEGP(NULL, STR_NAME, &gAEGPPluginID) != A_Err_NONE) {
+		gAEGPPluginID = 0;
+	}
 
 	return PF_Err_NONE;
 }
@@ -151,6 +164,9 @@ static PF_Err ParamsSetup(
 		BLEND_MIN, BLEND_MAX, BLEND_MIN, BLEND_MAX, BLEND_DFLT,
 		PF_Precision_TENTHS, PF_ValueDisplayFlag_PERCENT, 0, PARAM_GRADIENT_BLEND);
 
+	PF_ADD_BUTTON("Point Nulls", "Create Nulls from Points",
+		0, PF_ParamFlag_SUPERVISE | PF_ParamFlag_CANNOT_TIME_VARY, PARAM_CREATE_NULLS);
+
 	AEFX_CLR_STRUCT(def);
 	PF_ADD_TOPIC("Points", PARAM_POINTS_TOPIC);
 
@@ -206,6 +222,9 @@ static PF_Err ParamsSetup(
 	AEFX_CLR_STRUCT(def);
 	PF_ADD_POPUP("Blending Mode", CountMenuItems(STR_BLEND_CHOICES), BLEND_NORMAL, STR_BLEND_CHOICES, PARAM_BLEND_MODE);
 
+	AEFX_CLR_STRUCT(def);
+	PF_ADD_CHECKBOX("Alpha", "Makes layer transparent", TRUE, 0, PARAM_ALPHA_CUTS_LAYER);
+
 	out_data->num_params = PARAM_COUNT;
 
 	return err;
@@ -247,14 +266,111 @@ static PF_Err UpdateParameterUI(
 	return err;
 }
 
+/*	Append a UTF-16 string to a JS source string as a quoted literal made
+	of \uXXXX escapes, so no effect name can break out of the quotes and
+	nothing depends on the platform's text encoding.					*/
+static void AppendJsString(std::string &out, const A_UTF16Char *s) {
+	static const char kHex[] = "0123456789ABCDEF";
+	out += '"';
+	for (; s && *s; ++s) {
+		const unsigned c = static_cast<unsigned>(*s);
+		out += "\\u";
+		out += kHex[(c >> 12) & 0xF];
+		out += kHex[(c >>  8) & 0xF];
+		out += kHex[(c >>  4) & 0xF];
+		out += kHex[ c        & 0xF];
+	}
+	out += '"';
+}
+
+/*	Work out which comp, layer and effect instance the button belongs to,
+	then hand over to the script in CreateNullsScript.h.				*/
+static PF_Err CreateNullsFromPoints(PF_InData *in_data, PF_OutData *out_data)
+{
+	AEGP_SuiteHandler	suites(in_data->pica_basicP);
+	A_Err				err = A_Err_NONE;
+
+	AEGP_LayerH			layerH  = NULL;
+	AEGP_CompH			compH   = NULL;
+	AEGP_ItemH			itemH   = NULL;
+	AEGP_EffectRefH		effectH = NULL;
+	AEGP_StreamRefH		paramS  = NULL;
+	AEGP_StreamRefH		effectS = NULL;
+	AEGP_MemHandle		nameH   = NULL;
+	A_long				layer_index = 0;
+	A_long				comp_id = 0;
+	std::string			js;
+
+	if (!gAEGPPluginID) {
+		suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
+			"Create Nulls from Points could not register with After Effects.");
+		out_data->out_flags |= PF_OutFlag_DISPLAY_ERROR_MESSAGE;
+		return PF_Err_NONE;
+	}
+
+	ERR(suites.PFInterfaceSuite1()->AEGP_GetEffectLayer(in_data->effect_ref, &layerH));
+	ERR(suites.LayerSuite9()->AEGP_GetLayerIndex(layerH, &layer_index));
+	ERR(suites.LayerSuite9()->AEGP_GetLayerParentComp(layerH, &compH));
+	ERR(suites.CompSuite12()->AEGP_GetItemFromComp(compH, &itemH));
+	ERR(suites.ItemSuite9()->AEGP_GetItemID(itemH, &comp_id));
+
+	/*	The effect's display name - unique on its layer, which is what lets
+		the script tell two instances of this effect apart. Reached through
+		the first parameter's stream, whose parent is the effect itself.	*/
+	ERR(suites.PFInterfaceSuite1()->AEGP_GetNewEffectForEffect(gAEGPPluginID, in_data->effect_ref, &effectH));
+	ERR(suites.StreamSuite6()->AEGP_GetNewEffectStreamByIndex(gAEGPPluginID, effectH, PARAM_FRAME_LAYOUT, &paramS));
+	ERR(suites.DynamicStreamSuite4()->AEGP_GetNewParentStreamRef(gAEGPPluginID, paramS, &effectS));
+	ERR(suites.StreamSuite6()->AEGP_GetStreamName(gAEGPPluginID, effectS, FALSE, &nameH));
+
+	if (!err) {
+		A_UTF16Char *nameP = NULL;
+		ERR(suites.MemorySuite1()->AEGP_LockMemHandle(nameH, reinterpret_cast<void **>(&nameP)));
+		if (!err) {
+			char head[96];
+			std::snprintf(head, sizeof head,
+				"\n__chromaVRG3DArgs = { comp: %d, layer: %d, fx: ",
+				static_cast<int>(comp_id), static_cast<int>(layer_index + 1));
+			js  = kCreateNullsScript;
+			js += head;
+			AppendJsString(js, nameP);
+			js += " };\n"
+				  "app.scheduleTask(\"__chromaVRG3DSync(__chromaVRG3DArgs)\", 0, false);\n";
+			suites.MemorySuite1()->AEGP_UnlockMemHandle(nameH);
+		}
+	}
+
+	if (nameH)   suites.MemorySuite1()->AEGP_FreeMemHandle(nameH);
+	if (effectS) suites.StreamSuite6()->AEGP_DisposeStream(effectS);
+	if (paramS)  suites.StreamSuite6()->AEGP_DisposeStream(paramS);
+	if (effectH) suites.EffectSuite4()->AEGP_DisposeEffect(effectH);
+
+	if (!err) {
+		AEGP_MemHandle errH = NULL;
+		err = suites.UtilitySuite6()->AEGP_ExecuteScript(
+			gAEGPPluginID, js.c_str(), FALSE, NULL, &errH);
+		if (errH) suites.MemorySuite1()->AEGP_FreeMemHandle(errH);
+	}
+
+	if (err) {
+		suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
+			"Create Nulls from Points failed (error %d).", static_cast<int>(err));
+		out_data->out_flags |= PF_OutFlag_DISPLAY_ERROR_MESSAGE;
+	}
+
+	return PF_Err_NONE;
+}
+
 static PF_Err UserChangedParam(
 	PF_InData						*in_data,
 	PF_OutData						*out_data,
 	PF_ParamDef						*params[],
 	const PF_UserChangedParamExtra	*which_hitP)
 {
-	/*	Nothing to recompute; PF_Cmd_UPDATE_PARAMS_UI does the greying out.
-		Handling the command at all is what makes AE send that update.	*/
+	/*	Points Number needs nothing here; PF_Cmd_UPDATE_PARAMS_UI does the
+		greying out, and handling this command is what makes AE send it.	*/
+	if (which_hitP && which_hitP->param_index == PARAM_CREATE_NULLS) {
+		return CreateNullsFromPoints(in_data, out_data);
+	}
 	return PF_Err_NONE;
 }
 
@@ -377,6 +493,12 @@ static PF_Err GatherRenderInfo(
 	ERR(PF_CHECKOUT_PARAM(in_data, PARAM_BLEND_MODE, in_data->current_time,
 		in_data->time_step, in_data->time_scale, &p));
 	infoP->blend_mode = p.u.pd.value;
+	ERR(PF_CHECKIN_PARAM(in_data, &p));
+
+	AEFX_CLR_STRUCT(p);
+	ERR(PF_CHECKOUT_PARAM(in_data, PARAM_ALPHA_CUTS_LAYER, in_data->current_time,
+		in_data->time_step, in_data->time_scale, &p));
+	infoP->alpha_cuts_layer = p.u.bd.value ? 1 : 0;
 	ERR(PF_CHECKIN_PARAM(in_data, &p));
 
 	/*	One eye's frame. The gradient itself is identical for both eyes - it
@@ -519,13 +641,18 @@ static chroma::Vec3 DirectionForPixel(
 /*	Shared core: given the source pixel (straight colour + alpha, 0..1),
 	produce the output pixel.
 
-	The gradient's own alpha works like a layer with transparency sitting on
-	top of the source: it scales how much of the blended result shows, so
-	a transparent point lets the original layer through around it.
+	What the gradient's alpha does is the Alpha checkbox's choice:
 
-	"None" is the exception. It replaces the frame rather than compositing,
-	so there the gradient's alpha becomes the layer's alpha - which is how
-	you get a gradient with transparent holes to comp over something else.	*/
+	  on  (default)	the alpha cuts the layer: where a point is transparent
+					the layer becomes see-through, so whatever is below it
+					in the comp shows. This is what people expect - on a
+					solid, the alternative just reveals the solid's colour.
+	  off			the alpha only fades the effect: transparent points let
+					the layer's own pixels through, and the layer's alpha is
+					left alone - like a layer style's gradient overlay.
+
+	"None" replaces the frame rather than compositing, so there the
+	gradient's alpha simply becomes the layer's alpha either way.		*/
 static void ShadePixel(
 	const ChromaIterateRefcon	*rc,
 	A_long						 x,
@@ -563,6 +690,15 @@ static void ShadePixel(
 
 	double blended[3];
 	chroma::blendRGB(rc->blend_mode, src_rgb, grad, blended);
+
+	if (infoP->alpha_cuts_layer) {
+		const double k = infoP->opacity;
+		for (int c = 0; c < 3; ++c) {
+			out_rgb[c] = src_rgb[c] + k * (blended[c] - src_rgb[c]);
+		}
+		*out_alpha = src_alpha * (1.0 - k * (1.0 - grad_a));
+		return;
+	}
 
 	const double k = infoP->opacity * grad_a;
 	for (int c = 0; c < 3; ++c) {

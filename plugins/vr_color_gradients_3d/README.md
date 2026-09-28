@@ -60,10 +60,12 @@ direction at once, which is what makes the colour flood outward.
 | **Points Number** | 1–8. Point rows above this are greyed out. |
 | **Gradient Power** | Inverse-distance exponent. Higher = colour stays tighter to its own point. Default 2. |
 | **Gradient Blend** | 100 % = smooth inverse-distance mix. 0 % = hard Voronoi cells (each pixel takes its nearest point's flat colour). |
+| **Create Nulls from Points** | Button. Gives every live point its own 3D null and links it. See below. |
 | **Point 1–8 / Color 1–8** | The gradient points. |
 | **Alpha 1–8** | Per-point opacity, 0–100 %, keyframeable. AE's colour picker has no alpha channel, so each Color has its own slider directly beneath it. See *Alpha* below. |
 | **Opacity** | Mix of the result against the original layer. |
 | **Blending Mode** | None (replace) plus the standard separable and non-separable modes. |
+| **Alpha** | *Makes layer transparent*, on by default. See *Alpha* below. |
 
 ### Point Space
 
@@ -94,15 +96,38 @@ without dragging its invisible colour into its neighbours — a red point next
 to a 0 % blue one fades red → clear, never red → purple → clear. With every
 alpha at 100 % the result is identical to the plain gradient.
 
-What the gradient's alpha then does depends on **Blending Mode**:
+What the gradient's alpha then does is set by the **Alpha** checkbox:
 
-| Blending Mode | Gradient alpha acts as |
+| Alpha — *Makes layer transparent* | Gradient alpha acts as |
 |---|---|
-| **None** | The layer's alpha. The frame is replaced, so transparent points punch transparent holes — this is how you make a gradient to comp over something else. |
-| any other | A per-pixel opacity on the blend. Transparent points let the original layer show through; the layer's own alpha is left alone. |
+| **On** (default) | The layer's transparency. Where a point is transparent the layer becomes see-through and whatever is below it in the comp shows. On a solid, this is almost always what you want. |
+| **Off** | A fade on the effect only, like a layer style's gradient overlay: transparent points let the layer's own pixels through, and its alpha is left alone. On a white solid that means white. |
 
-Added in 1.1. The Alpha rows sit between each Color and the next Point, so an
-instance saved in a project with 1.0 should be re-applied.
+With **Blending Mode: None** the frame is replaced outright, so the gradient's
+alpha becomes the layer's alpha either way.
+
+AE's colour picker has no alpha channel and plug-ins cannot use the Layer
+Styles gradient editor, so alpha is a separate keyframeable slider under each
+Color rather than part of the colour.
+
+### Create Nulls from Points
+
+A button in the effect. Press it and every live point gets a 3D null sitting
+exactly where the point already is, named after it — **Point 1**, **Point 2**
+… — and linked with `toWorld`, so nothing moves. All of them are parented to
+one null, **VR Color Gradients 3D Points MASTER**; move that to carry the lot.
+
+It is a sync, not a one-shot, so press it again whenever:
+
+- you raise **Points Number** — only the new points get nulls;
+- you delete a null — that one is rebuilt where its point is.
+
+Names you give the nulls yourself are kept. A point already driven by an expression of your own is left alone. If a comp
+holds two gradient layers, the second one's nulls get its layer name in front,
+because expressions find layers by name.
+
+Parameters changed in 1.1 (Alpha rows) and 1.2 (the button and checkbox), so
+an instance saved with an earlier version should be re-applied.
 
 ## Installing
 
