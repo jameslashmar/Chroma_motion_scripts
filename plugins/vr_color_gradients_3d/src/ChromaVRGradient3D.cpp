@@ -117,6 +117,18 @@ static_assert(CountMenuItems(STR_SPACE_CHOICES) == SPACE_WORLD_XYZ,
 static_assert(PARAM_ALPHA_N(CHROMA_MAX_POINTS - 1) + 1 == PARAM_POINTS_TOPIC_END,
 	"Point/Color/Alpha rows and PARAM_STRIDE disagree");
 
+/*	The disk IDs saved projects depend on - see the note on the enum. If one
+	of these fires, a parameter was inserted or moved; put it back and add
+	the new one just before PARAM_COUNT instead.						*/
+static_assert(PARAM_FRAME_LAYOUT     ==  1, "parameter disk IDs moved");
+static_assert(PARAM_GRADIENT_BLEND   ==  8, "parameter disk IDs moved");
+static_assert(PARAM_CREATE_NULLS     ==  9, "parameter disk IDs moved");
+static_assert(PARAM_POINT_1          == 11, "parameter disk IDs moved");
+static_assert(PARAM_POINTS_TOPIC_END == 35, "parameter disk IDs moved");
+static_assert(PARAM_OPACITY          == 36, "parameter disk IDs moved");
+static_assert(PARAM_BLEND_MODE       == 37, "parameter disk IDs moved");
+static_assert(PARAM_ALPHA_CUTS_LAYER == 38, "parameter disk IDs moved");
+
 static PF_Err ParamsSetup(
 	PF_InData		*in_data,
 	PF_OutData		*out_data,

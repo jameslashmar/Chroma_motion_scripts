@@ -42,6 +42,15 @@
 
 #define CHROMA_MAX_POINTS	8
 
+/*	FROZEN AS OF 1.2. Each value here is also the parameter's disk ID
+	(def.uu.id), which is how AE matches the values saved in a project to
+	the controls when it loads one. Never insert, remove or reorder an
+	entry: add new parameters immediately before PARAM_COUNT only.
+
+	1.1 and 1.2 each inserted rows in the middle, renumbering everything
+	after them, and a project saved with 1.0 then failed to open with
+	"missing data in file (33 :: 4)" after an "effect control conversion
+	required" warning. The static_asserts in the .cpp pin the values.	*/
 enum {
 	PARAM_INPUT = 0,
 
