@@ -101,6 +101,8 @@ static_assert(CountMenuItems(STR_LAYOUT_CHOICES) == LAYOUT_SIDE_BY_SIDE,
 	"Frame Layout menu string and enum disagree");
 static_assert(CountMenuItems(STR_SPACE_CHOICES) == SPACE_WORLD_XYZ,
 	"Point Space menu string and enum disagree");
+static_assert(PARAM_ALPHA_N(CHROMA_MAX_POINTS - 1) + 1 == PARAM_POINTS_TOPIC_END,
+	"Point/Color/Alpha rows and PARAM_STRIDE disagree");
 
 static PF_Err ParamsSetup(
 	PF_InData		*in_data,
@@ -155,9 +157,11 @@ static PF_Err ParamsSetup(
 	for (int i = 0; i < CHROMA_MAX_POINTS; ++i) {
 		A_char point_name[32];
 		A_char color_name[32];
+		A_char alpha_name[32];
 
 		std::snprintf(point_name, sizeof point_name, "Point %d", i + 1);
 		std::snprintf(color_name, sizeof color_name, "Color %d", i + 1);
+		std::snprintf(alpha_name, sizeof alpha_name, "Alpha %d", i + 1);
 
 		/*	Added by hand rather than through PF_ADD_POINT_3D: as of SDK
 			25.6 that macro assigns Y_DFLT to z_value/z_dephault (see
@@ -182,6 +186,13 @@ static PF_Err ParamsSetup(
 		PF_ADD_COLOR(color_name,
 			kPointDefaults[i].r, kPointDefaults[i].g, kPointDefaults[i].b,
 			PARAM_COLOR_N(i));
+
+		/*	AE's colour picker has no alpha channel, so each colour gets its
+			own keyframeable slider directly beneath it.				*/
+		AEFX_CLR_STRUCT(def);
+		PF_ADD_FLOAT_SLIDERX(alpha_name,
+			ALPHA_MIN, ALPHA_MAX, ALPHA_MIN, ALPHA_MAX, ALPHA_DFLT,
+			PF_Precision_TENTHS, PF_ValueDisplayFlag_PERCENT, 0, PARAM_ALPHA_N(i));
 	}
 
 	AEFX_CLR_STRUCT(def);
@@ -218,8 +229,8 @@ static PF_Err UpdateParameterUI(
 	for (int i = 0; i < CHROMA_MAX_POINTS; ++i) {
 		const bool live = (i < active);
 
-		const int idx[2] = { PARAM_POINT_N(i), PARAM_COLOR_N(i) };
-		for (int k = 0; k < 2; ++k) {
+		const int idx[3] = { PARAM_POINT_N(i), PARAM_COLOR_N(i), PARAM_ALPHA_N(i) };
+		for (int k = 0; k < 3; ++k) {
 			PF_ParamDef copy = *params[idx[k]];
 
 			if (live) {
@@ -433,6 +444,12 @@ static PF_Err GatherRenderInfo(
 			in_data->time_step, in_data->time_scale, &p));
 		ColorToFloat(in_data, &p, infoP->points[i].rgb);
 		ERR(PF_CHECKIN_PARAM(in_data, &p));
+
+		AEFX_CLR_STRUCT(p);
+		ERR(PF_CHECKOUT_PARAM(in_data, PARAM_ALPHA_N(i), in_data->current_time,
+			in_data->time_step, in_data->time_scale, &p));
+		infoP->points[i].alpha = chroma::clamp01(p.u.fs_d.value / 100.0);
+		ERR(PF_CHECKIN_PARAM(in_data, &p));
 	}
 
 	return err;
@@ -499,13 +516,24 @@ static chroma::Vec3 DirectionForPixel(
 		infoP->hfov, infoP->vfov);
 }
 
-/*	Shared core: given the source colour, produce the output colour.	*/
+/*	Shared core: given the source pixel (straight colour + alpha, 0..1),
+	produce the output pixel.
+
+	The gradient's own alpha works like a layer with transparency sitting on
+	top of the source: it scales how much of the blended result shows, so
+	a transparent point lets the original layer through around it.
+
+	"None" is the exception. It replaces the frame rather than compositing,
+	so there the gradient's alpha becomes the layer's alpha - which is how
+	you get a gradient with transparent holes to comp over something else.	*/
 static void ShadePixel(
 	const ChromaIterateRefcon	*rc,
 	A_long						 x,
 	A_long						 y,
 	const double				 src_rgb[3],
-	double						 out_rgb[3])
+	double						 src_alpha,
+	double						 out_rgb[3],
+	double						*out_alpha)
 {
 	const ChromaRenderInfo *infoP = rc->infoP;
 
@@ -515,22 +543,32 @@ static void ShadePixel(
 		static_cast<double>(y + rc->origin_y));
 
 	double grad[3];
-	chroma::evaluate(rc->field, dir, grad);
+	double grad_a = 1.0;
+	chroma::evaluate(rc->field, dir, grad, &grad_a);
 
 	if (rc->blend_mode == chroma::kBlendNone) {
-		/*	"None" replaces the frame outright rather than compositing.	*/
+		/*	Mix premultiplied, then divide back out, so a half-transparent
+			gradient over a transparent layer does not pick up the layer's
+			invisible colour.										*/
+		const double k  = infoP->opacity;
+		const double a  = src_alpha + k * (grad_a - src_alpha);
 		for (int c = 0; c < 3; ++c) {
-			out_rgb[c] = src_rgb[c] + infoP->opacity * (grad[c] - src_rgb[c]);
+			const double p = src_rgb[c] * src_alpha +
+							 k * (grad[c] * grad_a - src_rgb[c] * src_alpha);
+			out_rgb[c] = (a > 1e-9) ? p / a : grad[c];
 		}
+		*out_alpha = a;
 		return;
 	}
 
 	double blended[3];
 	chroma::blendRGB(rc->blend_mode, src_rgb, grad, blended);
 
+	const double k = infoP->opacity * grad_a;
 	for (int c = 0; c < 3; ++c) {
-		out_rgb[c] = src_rgb[c] + infoP->opacity * (blended[c] - src_rgb[c]);
+		out_rgb[c] = src_rgb[c] + k * (blended[c] - src_rgb[c]);
 	}
+	*out_alpha = src_alpha;
 }
 
 /* --- 8 bit -------------------------------------------------------- */
@@ -548,9 +586,10 @@ static PF_Err ShadePixel8(
 		inP->red / 255.0, inP->green / 255.0, inP->blue / 255.0
 	};
 	double out[3];
-	ShadePixel(rc, x, y, src, out);
+	double out_a;
+	ShadePixel(rc, x, y, src, inP->alpha / 255.0, out, &out_a);
 
-	outP->alpha = inP->alpha;
+	outP->alpha = static_cast<A_u_char>(chroma::clamp01(out_a) * 255.0 + 0.5);
 	outP->red   = static_cast<A_u_char>(chroma::clamp01(out[0]) * 255.0 + 0.5);
 	outP->green = static_cast<A_u_char>(chroma::clamp01(out[1]) * 255.0 + 0.5);
 	outP->blue  = static_cast<A_u_char>(chroma::clamp01(out[2]) * 255.0 + 0.5);
@@ -574,9 +613,10 @@ static PF_Err ShadePixel16(
 		inP->red / kMax, inP->green / kMax, inP->blue / kMax
 	};
 	double out[3];
-	ShadePixel(rc, x, y, src, out);
+	double out_a;
+	ShadePixel(rc, x, y, src, inP->alpha / kMax, out, &out_a);
 
-	outP->alpha = inP->alpha;
+	outP->alpha = static_cast<A_u_short>(chroma::clamp01(out_a) * kMax + 0.5);
 	outP->red   = static_cast<A_u_short>(chroma::clamp01(out[0]) * kMax + 0.5);
 	outP->green = static_cast<A_u_short>(chroma::clamp01(out[1]) * kMax + 0.5);
 	outP->blue  = static_cast<A_u_short>(chroma::clamp01(out[2]) * kMax + 0.5);
@@ -597,11 +637,12 @@ static PF_Err ShadePixelFloat(
 
 	const double src[3] = { inP->red, inP->green, inP->blue };
 	double out[3];
-	ShadePixel(rc, x, y, src, out);
+	double out_a;
+	ShadePixel(rc, x, y, src, inP->alpha, out, &out_a);
 
 	/*	Float output is deliberately left unclamped above 1.0 so overbright
 		results survive into later effects; only negatives are cut.		*/
-	outP->alpha = inP->alpha;
+	outP->alpha = static_cast<PF_FpShort>(chroma::clamp01(out_a));
 	outP->red   = static_cast<PF_FpShort>(out[0] < 0.0 ? 0.0 : out[0]);
 	outP->green = static_cast<PF_FpShort>(out[1] < 0.0 ? 0.0 : out[1]);
 	outP->blue  = static_cast<PF_FpShort>(out[2] < 0.0 ? 0.0 : out[2]);
@@ -716,6 +757,7 @@ static PF_Err SmartRender(
 			rc.field.points[i].rgb[0] = infoP->points[i].rgb[0];
 			rc.field.points[i].rgb[1] = infoP->points[i].rgb[1];
 			rc.field.points[i].rgb[2] = infoP->points[i].rgb[2];
+			rc.field.points[i].alpha  = infoP->points[i].alpha;
 		}
 
 		PF_LRect area = { 0, 0, outputP->width, outputP->height };

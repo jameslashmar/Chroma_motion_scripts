@@ -238,6 +238,46 @@ int main() {
 		}
 	}
 
+	std::printf("\n-- alpha --\n");
+	{
+		GradientField f = makeField(2, 2.0, 1.0);
+		f.points[0].dir = dirFromLonLat(0.0, 0.0);
+		f.points[0].rgb[0] = 1.0;
+		f.points[1].dir = dirFromLonLat(kPi, 0.0);
+		f.points[1].rgb[2] = 1.0;
+		
+		double c[3], a;
+		evaluate(f, dirFromLonLat(kPi / 2.0, 0.0), c, &a);
+		checkNear(a, 1.0, 1e-12, "all points opaque gives alpha 1");
+		
+		double plain[3];
+		evaluate(f, dirFromLonLat(0.7, 0.1), plain);
+		evaluate(f, dirFromLonLat(0.7, 0.1), c, &a);
+		checkNear(c[0], plain[0], 1e-12, "opaque RGBA path matches the colour-only path");
+		
+		f.points[1].alpha = 0.0;
+		evaluate(f, dirFromLonLat(kPi / 2.0, 0.0), c, &a);
+		checkNear(a, 0.5, 1e-9, "midway to a transparent point is half alpha");
+		checkNear(c[0], 1.0, 1e-9, "transparent point does not bleed its colour (r)");
+		checkNear(c[2], 0.0, 1e-9, "transparent point does not bleed its colour (b)");
+		
+		evaluate(f, f.points[1].dir, c, &a);
+		check(a < 1e-6, "alpha reaches ~0 at a transparent point");
+		check(std::isfinite(c[0]) && std::isfinite(c[2]), "colour stays finite at zero alpha");
+		
+		f.points[0].alpha = 0.0;
+		evaluate(f, dirFromLonLat(0.3, 0.2), c, &a);
+		checkNear(a, 0.0, 1e-12, "every point transparent gives alpha 0");
+		check(std::isfinite(c[0]), "and the colour is still finite");
+		
+		f.points[0].alpha = 1.0;
+		f.points[1].alpha = 0.25;
+		f.blend = 0.0;
+		evaluate(f, dirFromLonLat(kPi - 0.2, 0.0), c, &a);
+		checkNear(a, 0.25, 1e-12, "hard cells take the nearest point's alpha");
+		checkNear(c[2], 1.0, 1e-12, "...and its straight colour");
+	}
+
 	std::printf("\n%d checks, %d failed\n\n", g_run, g_fail);
 	return g_fail == 0 ? 0 : 1;
 }

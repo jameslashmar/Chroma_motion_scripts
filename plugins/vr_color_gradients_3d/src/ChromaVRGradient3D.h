@@ -28,7 +28,7 @@
 #include "Smart_Utils.h"
 
 #define MAJOR_VERSION	1
-#define MINOR_VERSION	0
+#define MINOR_VERSION	1
 #define BUG_VERSION		0
 #define STAGE_VERSION	PF_Stage_RELEASE
 #define BUILD_VERSION	1
@@ -58,14 +58,14 @@ enum {
 
 	PARAM_POINTS_TOPIC,
 
-	PARAM_POINT_1,	PARAM_COLOR_1,
-	PARAM_POINT_2,	PARAM_COLOR_2,
-	PARAM_POINT_3,	PARAM_COLOR_3,
-	PARAM_POINT_4,	PARAM_COLOR_4,
-	PARAM_POINT_5,	PARAM_COLOR_5,
-	PARAM_POINT_6,	PARAM_COLOR_6,
-	PARAM_POINT_7,	PARAM_COLOR_7,
-	PARAM_POINT_8,	PARAM_COLOR_8,
+	PARAM_POINT_1,	PARAM_COLOR_1,	PARAM_ALPHA_1,
+	PARAM_POINT_2,	PARAM_COLOR_2,	PARAM_ALPHA_2,
+	PARAM_POINT_3,	PARAM_COLOR_3,	PARAM_ALPHA_3,
+	PARAM_POINT_4,	PARAM_COLOR_4,	PARAM_ALPHA_4,
+	PARAM_POINT_5,	PARAM_COLOR_5,	PARAM_ALPHA_5,
+	PARAM_POINT_6,	PARAM_COLOR_6,	PARAM_ALPHA_6,
+	PARAM_POINT_7,	PARAM_COLOR_7,	PARAM_ALPHA_7,
+	PARAM_POINT_8,	PARAM_COLOR_8,	PARAM_ALPHA_8,
 
 	PARAM_POINTS_TOPIC_END,
 
@@ -75,10 +75,12 @@ enum {
 	PARAM_COUNT
 };
 
-/*	The point/colour pairs are contiguous, so point i (0-based) is at
-	PARAM_POINT_1 + 2 * i and its colour at PARAM_POINT_1 + 2 * i + 1.		*/
-#define PARAM_POINT_N(i)	(PARAM_POINT_1 + 2 * (i))
-#define PARAM_COLOR_N(i)	(PARAM_POINT_1 + 2 * (i) + 1)
+/*	The point/colour/alpha triples are contiguous, so point i (0-based) is at
+	PARAM_POINT_1 + 3 * i, its colour one after and its alpha two after.	*/
+#define PARAM_STRIDE		3
+#define PARAM_POINT_N(i)	(PARAM_POINT_1 + PARAM_STRIDE * (i))
+#define PARAM_COLOR_N(i)	(PARAM_POINT_1 + PARAM_STRIDE * (i) + 1)
+#define PARAM_ALPHA_N(i)	(PARAM_POINT_1 + PARAM_STRIDE * (i) + 2)
 
 /* Frame Layout ---------------------------------------------------- */
 enum {
@@ -149,6 +151,10 @@ enum {
 #define BLEND_MAX		100.0
 #define BLEND_DFLT		100.0
 
+#define ALPHA_MIN		0.0
+#define ALPHA_MAX		100.0
+#define ALPHA_DFLT		100.0
+
 #define OPACITY_MIN		0.0
 #define OPACITY_MAX		100.0
 #define OPACITY_DFLT	100.0
@@ -165,6 +171,7 @@ typedef struct {
 	ChromaVec3	dir;			/* unit direction from the viewer			*/
 	PF_FpLong	radius;			/* distance from the viewer, sphere = 1.0	*/
 	PF_FpLong	rgb[3];			/* linear-ish 0..1 colour					*/
+	PF_FpLong	alpha;			/* 0..1										*/
 } ChromaGradientPoint;
 
 typedef struct {

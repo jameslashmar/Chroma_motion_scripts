@@ -119,7 +119,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 	<key>CFBundleSignature</key>
 	<string>FXTC</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>1.1</string>
 	<key>LSRequiresCarbon</key>
 	<true/>
 	<key>NSAppleScriptEnabled</key>

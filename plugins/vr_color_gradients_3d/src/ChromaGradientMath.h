@@ -31,6 +31,10 @@
 
 	Colours are then mixed by inverse distance weighting (Shepard's method)
 	with a user exponent.
+
+	Each point also carries an alpha. Colour is interpolated premultiplied -
+	weighted by w * alpha - so a transparent point fades the gradient out
+	around it without dragging its (invisible) colour into its neighbours.
 */
 
 #pragma once
@@ -94,6 +98,10 @@ inline Vec3 dirFromNormalized(double u, double v, double hfov, double vfov) {
 	return dirFromLonLat(lon, lat);
 }
 
+inline double clamp01(double v) {
+	return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+}
+
 /* ------------------------------------------------------------------ */
 /*  The gradient field                                                 */
 /* ------------------------------------------------------------------ */
@@ -102,6 +110,7 @@ struct GradientPoint {
 	Vec3   dir;			/* unit direction from the viewer				*/
 	double radius;		/* distance from the viewer; sphere == 1.0		*/
 	double rgb[3];
+	double alpha = 1.0;	/* 0..1; opaque by default							*/
 };
 
 struct GradientField {
@@ -118,7 +127,8 @@ inline double squaredDistance(const GradientPoint& p, const Vec3& d) {
 	return d2 > kEpsilon ? d2 : kEpsilon;
 }
 
-/*	Evaluate the field along direction d (must be unit length).
+/*	Evaluate the field along direction d (must be unit length), giving the
+	straight (un-premultiplied) colour and the coverage alpha.
 
 	Weights are computed relative to the *closest* point, i.e.
 
@@ -126,10 +136,14 @@ inline double squaredDistance(const GradientPoint& p, const Vec3& d) {
 
 	rather than d2_i ^ (-power/2) directly. Mathematically identical after
 	normalisation, but every weight lands in (0, 1] with the largest exactly
-	1, so a high exponent cannot overflow to inf and poison the sum.	*/
-inline void evaluate(const GradientField& f, const Vec3& d, double out_rgb[3]) {
+	1, so a high exponent cannot overflow to inf and poison the sum.
+
+	Colour is mixed premultiplied and divided back out at the end, so with
+	every alpha at 1 this is exactly the plain inverse-distance mix.	*/
+inline void evaluate(const GradientField& f, const Vec3& d, double out_rgb[3], double* out_alpha) {
 	if (f.count <= 0) {
 		out_rgb[0] = out_rgb[1] = out_rgb[2] = 0.0;
+		if (out_alpha) *out_alpha = 0.0;
 		return;
 	}
 
@@ -150,7 +164,8 @@ inline void evaluate(const GradientField& f, const Vec3& d, double out_rgb[3]) {
 	const double half_power = 0.5 * f.power;
 
 	double wsum = 0.0;
-	double acc[3] = { 0.0, 0.0, 0.0 };
+	double asum = 0.0;
+	double acc[3] = { 0.0, 0.0, 0.0 };		/* premultiplied				*/
 
 	for (int i = 0; i < n; ++i) {
 		double w;
@@ -162,28 +177,52 @@ inline void evaluate(const GradientField& f, const Vec3& d, double out_rgb[3]) {
 				w = 0.0;
 			}
 		}
+		const double a  = clamp01(f.points[i].alpha);
+		const double wa = w * a;
 		wsum   += w;
-		acc[0] += w * f.points[i].rgb[0];
-		acc[1] += w * f.points[i].rgb[1];
-		acc[2] += w * f.points[i].rgb[2];
+		asum   += wa;
+		acc[0] += wa * f.points[i].rgb[0];
+		acc[1] += wa * f.points[i].rgb[1];
+		acc[2] += wa * f.points[i].rgb[2];
 	}
 
 	const GradientPoint& near_pt = f.points[nearest];
+	const double near_a = clamp01(near_pt.alpha);
 
 	if (!(wsum > 0.0) || !std::isfinite(wsum)) {
 		out_rgb[0] = near_pt.rgb[0];
 		out_rgb[1] = near_pt.rgb[1];
 		out_rgb[2] = near_pt.rgb[2];
+		if (out_alpha) *out_alpha = near_a;
 		return;
 	}
 
 	/*	blend == 1 gives the smooth inverse-distance mix; blend == 0 collapses
-		to the nearest point's flat colour, i.e. hard Voronoi cells.		*/
+		to the nearest point's flat colour, i.e. hard Voronoi cells. The lerp
+		runs on premultiplied values so a cell edge next to a transparent
+		point fades in alpha rather than in colour.						*/
 	const double t = std::min(1.0, std::max(0.0, f.blend));
+
+	const double alpha = near_a + t * (asum / wsum - near_a);
+	double prem[3];
 	for (int c = 0; c < 3; ++c) {
-		const double idw = acc[c] / wsum;
-		out_rgb[c] = near_pt.rgb[c] + t * (idw - near_pt.rgb[c]);
+		const double near_p = near_a * near_pt.rgb[c];
+		prem[c] = near_p + t * (acc[c] / wsum - near_p);
 	}
+
+	if (alpha > kEpsilon) {
+		for (int c = 0; c < 3; ++c) out_rgb[c] = prem[c] / alpha;
+	} else {
+		/*	Fully transparent here: the colour is invisible, so report the
+			nearest point's rather than dividing by zero.				*/
+		for (int c = 0; c < 3; ++c) out_rgb[c] = near_pt.rgb[c];
+	}
+	if (out_alpha) *out_alpha = alpha;
+}
+
+/*	Colour only. Kept for callers that ignore alpha.					*/
+inline void evaluate(const GradientField& f, const Vec3& d, double out_rgb[3]) {
+	evaluate(f, d, out_rgb, nullptr);
 }
 
 /* ------------------------------------------------------------------ */
@@ -210,10 +249,6 @@ enum BlendMode {
 	kBlendColor,
 	kBlendLuminosity
 };
-
-inline double clamp01(double v) {
-	return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
-}
 
 inline double softLightChannel(double b, double s) {
 	if (s <= 0.5) {

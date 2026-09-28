@@ -61,6 +61,7 @@ direction at once, which is what makes the colour flood outward.
 | **Gradient Power** | Inverse-distance exponent. Higher = colour stays tighter to its own point. Default 2. |
 | **Gradient Blend** | 100 % = smooth inverse-distance mix. 0 % = hard Voronoi cells (each pixel takes its nearest point's flat colour). |
 | **Point 1–8 / Color 1–8** | The gradient points. |
+| **Alpha 1–8** | Per-point opacity, 0–100 %, keyframeable. AE's colour picker has no alpha channel, so each Color has its own slider directly beneath it. See *Alpha* below. |
 | **Opacity** | Mix of the result against the original layer. |
 | **Blending Mode** | None (replace) plus the standard separable and non-separable modes. |
 
@@ -84,6 +85,24 @@ One 3D point parameter per point; this popup decides how its X/Y/Z is read.
   the reason this mode exists.
 
 ---
+
+### Alpha
+
+Each point's alpha travels through the gradient with it. Colour is mixed
+**premultiplied**, so a transparent point fades the gradient out around it
+without dragging its invisible colour into its neighbours — a red point next
+to a 0 % blue one fades red → clear, never red → purple → clear. With every
+alpha at 100 % the result is identical to the plain gradient.
+
+What the gradient's alpha then does depends on **Blending Mode**:
+
+| Blending Mode | Gradient alpha acts as |
+|---|---|
+| **None** | The layer's alpha. The frame is replaced, so transparent points punch transparent holes — this is how you make a gradient to comp over something else. |
+| any other | A per-pixel opacity on the blend. Transparent points let the original layer show through; the layer's own alpha is left alone. |
+
+Added in 1.1. The Alpha rows sit between each Color and the next Point, so an
+instance saved in a project with 1.0 should be re-applied.
 
 ## Installing
 
@@ -184,7 +203,7 @@ right edges match (no wrap seam), and that the pole rows stay consistent.
 
 ## Verified in After Effects
 
-Checked in AE 2026 (26.0x67) by driving it with a startup script and comparing
+Checked (v1.0, before Alpha was added) in AE 2026 (26.0x67) by driving it with a startup script and comparing
 the rendered frames:
 
 | Check | Result |
