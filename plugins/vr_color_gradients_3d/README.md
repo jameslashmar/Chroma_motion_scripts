@@ -8,7 +8,7 @@ space rather than being pinned to the surface of the sphere.
 - Effect name: **VR Color Gradients 3D**
 - Category: **Immersive Video** (sits next to the stock VR effects)
 - Match name: `CHRM VR Color Gradients 3D`
-- Windows x64, After Effects 2026
+- Version **1.2** — Windows x64 and macOS (universal), After Effects 2026
 
 This is an independent implementation of the standard maths — equirectangular
 projection plus inverse-distance-weighted colour interpolation. No Adobe code
@@ -122,12 +122,30 @@ It is a sync, not a one-shot, so press it again whenever:
 - you raise **Points Number** — only the new points get nulls;
 - you delete a null — that one is rebuilt where its point is.
 
-Names you give the nulls yourself are kept. A point already driven by an expression of your own is left alone. If a comp
-holds two gradient layers, the second one's nulls get its layer name in front,
-because expressions find layers by name.
+Names you give the nulls yourself are kept. A point already driven by an
+expression of your own is left alone. If a comp holds two gradient layers, the
+second one's nulls get its layer name in front, because expressions find
+layers by name.
 
-Parameters changed in 1.1 (Alpha rows) and 1.2 (the button and checkbox), so
-an instance saved with an earlier version should be re-applied.
+### Projects saved with an older version
+
+**1.2 will not open a project saved with 1.0 or 1.1 that uses this effect.**
+AE refuses with *"effect control conversion required"* and then *"missing data
+in file (33 :: 4)"*. Both releases inserted controls mid-list, which moved the
+IDs AE uses to match saved values to controls.
+
+To recover such a project, put the version it was saved with back, open the
+project, remove the effect, save, then install 1.2 again. Earlier builds are in
+this repo's history — 1.0 is `ChromaVRGradient3D.aex` / `.plugin` at commit
+`a9f44c1`, 1.1 at `5b6b240`. From Git Bash or `cmd` — Windows PowerShell 5's
+`>` re-encodes output and corrupts a binary:
+
+```
+git show a9f44c1:plugins/vr_color_gradients_3d/ChromaVRGradient3D.aex > ChromaVRGradient3D.aex
+```
+
+From 1.2 on the IDs are frozen, and the build refuses to compile if one moves,
+so projects saved with 1.2 will keep opening in later versions.
 
 ## Installing
 
@@ -155,10 +173,11 @@ the effect simply never appears in the menu.
   3D nulls, with one light keyframed past the viewer so the depth falloff is
   visible without touching anything. **File → Scripts → Run Script File**.
 - [`../../aftereffects/Scripts/VRGradient3DLinkNulls.jsx`](../../aftereffects/Scripts/VRGradient3DLinkNulls.jsx)
-  — select a layer carrying the effect and it gives every live point its own
-  null, placed exactly where the point already is so nothing moves. 2D or 3D,
-  optionally grouped under one parent. A point is a parameter and cannot be
-  parented or linked to a camera; a null can.
+  — the script the **Create Nulls from Points** button grew out of. The button
+  is the one to use now; the script is still here for **2D** nulls (X and Y
+  only, each point keeps its Z), which the button does not make. It does not
+  sync: points already linked are skipped, but each run makes a new parent
+  null rather than reusing the last one.
 
 ## Building it yourself
 
@@ -244,6 +263,19 @@ the rendered frames:
 | World XYZ | Render tracks the world position |
 | 3D null link | Expression-linked null renders **pixel-identically** to the literal position |
 
+1.2 was checked by hand in AE 2026 on Windows:
+
+| Check | Result |
+|---|---|
+| Alpha, *Makes layer transparent* on | Transparent points make the layer see-through |
+| Create Nulls from Points | Nulls named Point 1…n under **VR Color Gradients 3D Points MASTER**; nothing moves |
+| Raise Points Number, press again | Only the new points get nulls |
+| 1.0 project in 1.2 | Does not open — see *Projects saved with an older version* |
+
+Not yet checked: that half-transparent areas composite as a clean blend rather
+than a lightened one, i.e. that AE reads the effect's output with the alpha
+convention it is written in. An automated render test for this is still to run.
+
 ### Gotchas when verifying a plug-in by script
 
 - **`CompItem.saveFrameToPng` is asynchronous.** It returns before the file is
@@ -291,6 +323,21 @@ Half resolution would not match Full.
 immersive/projection properties, so the stock effect's "Auto VR Properties"
 checkbox has no public equivalent. Field of view is set explicitly instead;
 the defaults (360 × 180) are right for ordinary equirectangular footage.
+
+**Parameter IDs are forever.** Each parameter's `def.uu.id` is its disk ID:
+AE matches a saved project's values to controls by it. Here the IDs are the
+parameter enum's values, so inserting a row renumbers everything after it —
+which is exactly how 1.1 and 1.2 broke 1.0 projects. New parameters go
+immediately before `PARAM_COUNT`, and `static_assert`s pin the existing values.
+
+**A button that runs a script.** Create Nulls from Points works out its own
+comp, layer and effect through the AEGP suites, then runs ExtendScript with
+`AEGP_ExecuteScript`. The script defines a global function and defers the call
+with `app.scheduleTask`, because the button press arrives inside the effect's
+own `USER_CHANGED_PARAM` and the script writes expressions onto that same
+effect. The effect is picked out by its display name, which is unique on its
+layer, passed as `\uXXXX` escapes so no name can break the script. The script
+is in `src/CreateNullsScript.h`.
 
 **Render path.** CPU Smart Render, 8 / 16 / 32-bit, float-aware and
 thread-safe, using AE's iterate suites. Adobe's own VR effects are GPU-only;
