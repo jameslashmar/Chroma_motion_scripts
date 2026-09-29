@@ -48,7 +48,7 @@ resource 'PiPL' (16000) {
 
 		/* [8] */
 		AE_Effect_Version {
-			591361	/* 1.2.0 release, build 1 */
+			624129	/* 1.3.0 release, build 1 */
 		},
 
 		/* [9] */
@@ -65,9 +65,10 @@ resource 'PiPL' (16000) {
 
 		/* PF_OutFlag2_PARAM_GROUP_START_COLLAPSED_FLAG |
 		   PF_OutFlag2_SUPPORTS_SMART_RENDER | PF_OutFlag2_FLOAT_COLOR_AWARE |
-		   PF_OutFlag2_SUPPORTS_THREADED_RENDERING                            */
+		   PF_OutFlag2_SUPPORTS_THREADED_RENDERING |
+		   PF_OutFlag2_SUPPORTS_GPU_RENDER_F32                                */
 		AE_Effect_Global_OutFlags_2 {
-			0x08001408
+			0x0A001408
 		},
 
 		/* [11] */

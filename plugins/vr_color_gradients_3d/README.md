@@ -8,7 +8,9 @@ space rather than being pinned to the surface of the sphere.
 - Effect name: **VR Color Gradients 3D**
 - Category: **Immersive Video** (sits next to the stock VR effects)
 - Match name: `CHRM VR Color Gradients 3D`
-- Version **1.2** — Windows x64 and macOS (universal), After Effects 2026
+- Version **1.3** — Windows x64 and macOS (universal), After Effects 2026.
+  Renders on the CPU everywhere and on the GPU where it can: **CUDA** and
+  **OpenCL** on Windows, **Metal** on macOS.
 
 This is an independent implementation of the standard maths — equirectangular
 projection plus inverse-distance-weighted colour interpolation. No Adobe code
@@ -127,9 +129,29 @@ expression of your own is left alone. If a comp holds two gradient layers, the
 second one's nulls get its layer name in front, because expressions find
 layers by name.
 
+### GPU rendering (1.3)
+
+1.3 adds a GPU render path. The parameters, their order and their disk IDs are
+unchanged from 1.2, so **projects saved with 1.2 open in 1.3 as they were**.
+
+The effect's **About** box ends with the line *GPU: …* naming what this build
+can use, e.g. `GPU: CUDA, OpenCL (CPU fallback)` on Windows.
+
+| Platform | Frameworks | Notes |
+|---|---|---|
+| Windows | CUDA, OpenCL | AE's own GPU sniffer picks the framework. On an NVIDIA card with a current driver that is CUDA, and OpenCL devices are skipped. |
+| macOS | Metal | Compiled from source when the GPU device is set up, with fast-math off. |
+
+The GPU is only used when the kernel actually compiled for the framework AE is
+running. Anything else — no GPU, an unsupported framework, a compile failure,
+GPU acceleration switched off in the project — falls back to the CPU path,
+which is unchanged from 1.2. **CPU and GPU give the same picture**: the tests
+hold the kernel to the double-precision reference within a few 1e-6 across
+every blend mode, stereo layout and alpha case.
+
 ### Projects saved with an older version
 
-**1.2 will not open a project saved with 1.0 or 1.1 that uses this effect.**
+**1.2 and later will not open a project saved with 1.0 or 1.1 that uses this effect.**
 AE refuses with *"effect control conversion required"* and then *"missing data
 in file (33 :: 4)"*. Both releases inserted controls mid-list, which moved the
 IDs AE uses to match saved values to controls.
@@ -201,6 +223,16 @@ cd src
 ./build-mac.sh --clean      # wipe intermediates first
 ```
 
+**CUDA** is optional. If `build.ps1` finds a CUDA toolkit (12.x) it builds the
+CUDA kernel in as well as OpenCL; without one it builds OpenCL only, and
+`-NoCuda` forces that. It prints which it did (`GPU: CUDA + OpenCL, CPU
+fallback`). The toolkit needs only `nvcc`, the runtime and the Visual Studio
+integration — the display driver is not touched. After switching between the
+two, use `-Clean`: a stale kernel object from the other kind of build breaks the
+link. The OpenCL and Metal kernels need no SDK: the one kernel source in
+`ChromaVRGradient3D_Kernel.h` is embedded as text and compiled by the driver
+when AE sets the GPU device up.
+
 Same three stages either way, but macOS wants a bundle rather than a flat
 `.aex`, and the PiPL goes through `Rez` instead of `PiPLtool` + `rc`. The
 bundle's `CFBundlePackageType` of `eFKT` and signature `FXTC` are what mark it
@@ -245,6 +277,14 @@ W3C blend formulas hold.
 you: that a point reproduces its own colour at its own pixel, that the left and
 right edges match (no wrap seam), and that the pole rows stay consistent.
 
+`test_kernel` holds the GPU kernel to `chroma::shadePixel`, the double-precision
+reference the CPU path also uses. It runs 30 scenarios — every blend mode, both
+stereo layouts, a sub-region origin, the alpha cases and degenerate radii —
+first with the kernel compiled as plain C++, then through the real OpenCL
+compiler on this machine's GPU. On the Mac `test_kernel_metal` does the same
+through Metal. Worst difference seen is a few 1e-6, with no outliers.
+`build.ps1 -Test` and `./build-mac.sh --test` build and run all of them.
+
 ## Verified in After Effects
 
 Checked (v1.0, before Alpha was added) in AE 2026 (26.0x67) by driving it with a startup script and comparing
@@ -271,6 +311,10 @@ the rendered frames:
 | Create Nulls from Points | Nulls named Point 1…n under **VR Color Gradients 3D Points MASTER**; nothing moves |
 | Raise Points Number, press again | Only the new points get nulls |
 | 1.0 project in 1.2 | Does not open — see *Projects saved with an older version* |
+
+1.3 (GPU) was installed and checked by hand in AE 2026 on Windows (RTX 4090,
+CUDA) and on macOS (Apple M3 Max, Metal): it loads and renders correctly. The
+numerical check is the test suite — see *Tests* — not a screen comparison.
 
 Not yet checked: that half-transparent areas composite as a clean blend rather
 than a lightened one, i.e. that AE reads the effect's output with the alpha
@@ -339,8 +383,19 @@ effect. The effect is picked out by its display name, which is unique on its
 layer, passed as `\uXXXX` escapes so no name can break the script. The script
 is in `src/CreateNullsScript.h`.
 
-**Render path.** CPU Smart Render, 8 / 16 / 32-bit, float-aware and
-thread-safe, using AE's iterate suites. Adobe's own VR effects are GPU-only;
-this one has no such requirement and will render with GPU acceleration off.
+**Render path.** Smart Render, on the GPU where possible and otherwise on the
+CPU (8 / 16 / 32-bit, float-aware, thread-safe, using AE's iterate suites).
+Adobe's own VR effects are GPU-only; this one has no such requirement and
+renders with GPU acceleration off.
+
+**One kernel, four compilers.** The per-pixel shading is written once, in
+`ChromaGradientMath.h` as `chroma::shadePixel` for the CPU, and once in
+`ChromaVRGradient3D_Kernel.h` for the GPU, in the C subset that CUDA, OpenCL C
+and Metal all accept. The kernel's parameter block is nothing but `float4` and
+`int4`, so its 336-byte layout is identical in all four languages without a
+padding byte; the host `static_assert`s the size. `PF_Cmd_GPU_DEVICE_SETUP`
+only claims support for a framework once the kernel has actually compiled for
+it, and `PreRender` only asks for a GPU render on such a device, so a failure to
+compile is a CPU fallback and never a broken frame.
 Colour params are read through `PF_GetFloatingPointColorFromColorDef` so they
 arrive already converted into the project's working space.

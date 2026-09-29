@@ -371,6 +371,117 @@ inline void blendRGB(int mode, const double b[3], const double s[3], double out[
 	}
 }
 
+/* ------------------------------------------------------------------ */
+/*  Shading - one pixel, start to finish                               */
+/* ------------------------------------------------------------------ */
+
+/*	The per-pixel step the plug-in's CPU path runs, kept free of AE types
+	so the tests can call it and so the GPU kernel has a reference to be
+	measured against. ChromaVRGradient3D_Kernel.h is this same code in
+	single precision; tests/test_kernel_*.cpp check the two agree.		*/
+
+enum FrameLayout {
+	kLayoutMonoscopic = 0,
+	kLayoutOverUnder,
+	kLayoutSideBySide
+};
+
+struct ShadeParams {
+	GradientField	field;
+	int				layout;				/* FrameLayout							*/
+	int				blend_mode;			/* BlendMode							*/
+	bool			alpha_cuts_layer;
+	double			hfov;				/* radians								*/
+	double			vfov;
+	double			opacity;			/* 0..1									*/
+	double			sub_w;				/* one eye's frame, pixels				*/
+	double			sub_h;
+	int				origin_x;			/* buffer (0,0) in layer coordinates	*/
+	int				origin_y;
+};
+
+/*	Layer pixel (absolute, current resolution) -> view direction.
+	For the stereo layouts the pixel is folded into its own eye's frame
+	first, so both eyes receive the same gradient.						*/
+inline Vec3 directionForPixel(const ShadeParams& p, double abs_x, double abs_y) {
+	double fx = abs_x;
+	double fy = abs_y;
+
+	if (p.layout == kLayoutOverUnder) {
+		if (fy >= p.sub_h) fy -= p.sub_h;
+	} else if (p.layout == kLayoutSideBySide) {
+		if (fx >= p.sub_w) fx -= p.sub_w;
+	}
+
+	return dirFromNormalized((fx + 0.5) / p.sub_w, (fy + 0.5) / p.sub_h, p.hfov, p.vfov);
+}
+
+/*	Given the source pixel (straight colour + alpha, 0..1) at buffer
+	position (x, y), produce the output pixel.
+
+	What the gradient's alpha does is the Alpha checkbox's choice:
+
+	  on  (default)	the alpha cuts the layer: where a point is transparent
+					the layer becomes see-through, so whatever is below it
+					in the comp shows. This is what people expect - on a
+					solid, the alternative just reveals the solid's colour.
+	  off			the alpha only fades the effect: transparent points let
+					the layer's own pixels through, and the layer's alpha is
+					left alone - like a layer style's gradient overlay.
+
+	"None" replaces the frame rather than compositing, so there the
+	gradient's alpha simply becomes the layer's alpha either way.		*/
+inline void shadePixel(
+	const ShadeParams&	p,
+	int					x,
+	int					y,
+	const double		src_rgb[3],
+	double				src_alpha,
+	double				out_rgb[3],
+	double*				out_alpha)
+{
+	const Vec3 dir = directionForPixel(p,
+		static_cast<double>(x + p.origin_x),
+		static_cast<double>(y + p.origin_y));
+
+	double grad[3];
+	double grad_a = 1.0;
+	evaluate(p.field, dir, grad, &grad_a);
+
+	if (p.blend_mode == kBlendNone) {
+		/*	Mix premultiplied, then divide back out, so a half-transparent
+			gradient over a transparent layer does not pick up the layer's
+			invisible colour.										*/
+		const double k = p.opacity;
+		const double a = src_alpha + k * (grad_a - src_alpha);
+		for (int c = 0; c < 3; ++c) {
+			const double prem = src_rgb[c] * src_alpha +
+								k * (grad[c] * grad_a - src_rgb[c] * src_alpha);
+			out_rgb[c] = (a > 1e-9) ? prem / a : grad[c];
+		}
+		*out_alpha = a;
+		return;
+	}
+
+	double blended[3];
+	blendRGB(p.blend_mode, src_rgb, grad, blended);
+
+	if (p.alpha_cuts_layer) {
+		const double k = p.opacity;
+		for (int c = 0; c < 3; ++c) {
+			out_rgb[c] = src_rgb[c] + k * (blended[c] - src_rgb[c]);
+		}
+		*out_alpha = src_alpha * (1.0 - k * (1.0 - grad_a));
+		return;
+	}
+
+	const double k = p.opacity * grad_a;
+	for (int c = 0; c < 3; ++c) {
+		out_rgb[c] = src_rgb[c] + k * (blended[c] - src_rgb[c]);
+	}
+	*out_alpha = src_alpha;
+}
+
 }	/* namespace chroma */
 
 #endif	/* CHROMA_GRADIENT_MATH_H */

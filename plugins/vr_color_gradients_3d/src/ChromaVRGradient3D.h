@@ -28,10 +28,25 @@
 #include "Smart_Utils.h"
 
 #define MAJOR_VERSION	1
-#define MINOR_VERSION	2
+#define MINOR_VERSION	3
 #define BUG_VERSION		0
 #define STAGE_VERSION	PF_Stage_RELEASE
 #define BUILD_VERSION	1
+
+/*	Which GPU frameworks this binary carries a kernel for - shown in the
+	About box so a user can tell a GPU build from a CPU-only one. Decided by
+	the build script (see build.ps1 / build-mac.sh).					*/
+#if defined(CHROMA_HAS_CUDA) && defined(CHROMA_HAS_OPENCL)
+	#define STR_GPU_FRAMEWORKS	"CUDA, OpenCL (CPU fallback)"
+#elif defined(CHROMA_HAS_CUDA)
+	#define STR_GPU_FRAMEWORKS	"CUDA (CPU fallback)"
+#elif defined(CHROMA_HAS_OPENCL)
+	#define STR_GPU_FRAMEWORKS	"OpenCL (CPU fallback)"
+#elif defined(CHROMA_HAS_METAL)
+	#define STR_GPU_FRAMEWORKS	"Metal (CPU fallback)"
+#else
+	#define STR_GPU_FRAMEWORKS	"none - CPU only"
+#endif
 
 #define STR_NAME			"VR Color Gradients 3D"
 #define STR_DESCRIPTION		"A 360/VR multi-point colour gradient whose points can be moved in 3D space.\rChroma Studio."
