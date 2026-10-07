@@ -45,6 +45,12 @@ Each area has its own page, because each one goes deep enough to deserve it.
 | **Deadline custom delay** | Takes a workstation out of the farm for a couple of hours and puts it back |
 | **Shutdown / standby** | Delayed shutdown or suspend, for the end of an overnight render |
 
+### Web tools
+
+| | |
+|---|---|
+| **[Unshare](https://jameslashmar.github.io/Chroma_motion_scripts/unshare/)** | Lists every Dropbox shared link you own, filters by view / edit / public, and revokes them in bulk. Runs entirely in the browser with a short-lived token you generate; nothing is stored or sent anywhere but Dropbox. Try it without a token: [demo mode](https://jameslashmar.github.io/Chroma_motion_scripts/unshare/#demo). Source: [`docs/unshare/index.html`](docs/unshare/index.html) |
+
 ### Reference
 
 - [XPresso API notes](docs/xpresso-api-notes.md) — what changed in the 2026 API, and why older forum examples break. Read this before writing new XPresso tooling.

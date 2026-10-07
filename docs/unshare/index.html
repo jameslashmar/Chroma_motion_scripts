@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unshare — Dropbox link cleanup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d0c0b;--panel:#151311;--panel2:#1c1916;--line:#2b2723;--ink:#ede7dd;--mute:#8b8378;--dim:#5c564f;
+  --red:#ff4d2e;--red-bg:rgba(255,77,46,.10);--amber:#f2b33d;--amber-bg:rgba(242,179,61,.10);
+  --cool:#86b8cc;--cool-bg:rgba(134,184,204,.10);--ok:#7bc47f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 "IBM Plex Mono",ui-monospace,Menlo,monospace}
+body{min-height:100vh;padding:0 16px 120px}
+a{color:inherit}
+.wrap{max-width:1280px;margin:0 auto}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:40px 0 22px;border-bottom:1px solid var(--line)}
+h1{font:400 76px/0.9 "Instrument Serif",Georgia,serif;margin:0;letter-spacing:-1.5px}
+h1 em{color:var(--red);font-style:italic}
+.sub{color:var(--mute);max-width:440px}
+.sub b{color:var(--ink);font-weight:500}
+
+/* connect */
+.connect{display:grid;grid-template-columns:1fr auto;gap:10px;margin:22px 0 8px}
+input[type=password],input[type=search],select{background:var(--panel);border:1px solid var(--line);color:var(--ink);font:inherit;padding:11px 12px;border-radius:2px;outline:none;width:100%}
+input:focus,select:focus{border-color:var(--mute)}
+button{font:inherit;cursor:pointer;border-radius:2px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:10px 16px;white-space:nowrap}
+button:hover:not(:disabled){border-color:var(--mute)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.btn-red{background:var(--red);border-color:var(--red);color:#120806;font-weight:600}
+.btn-red:hover:not(:disabled){filter:brightness(1.1);border-color:var(--red)}
+details.how{color:var(--mute);margin-bottom:6px}
+details.how summary{cursor:pointer;color:var(--ink);list-style:none;display:inline-block;border-bottom:1px dashed var(--dim)}
+details.how summary::-webkit-details-marker{display:none}
+details.how ol{margin:10px 0 4px;padding-left:20px;max-width:760px}
+details.how li{margin:4px 0}
+code{background:var(--panel2);padding:1px 5px;border:1px solid var(--line);color:var(--ink)}
+.msg{min-height:20px;margin:8px 0;color:var(--mute)}
+.msg.err{color:var(--red)}
+.msg.ok{color:var(--ok)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);margin:18px 0}
+.stat{padding:14px 16px;border-right:1px solid var(--line)}
+.stat:last-child{border-right:0}
+.stat .n{font:400 40px/1 "Instrument Serif",Georgia,serif}
+.stat .l{color:var(--mute);text-transform:uppercase;letter-spacing:.12em;font-size:10.5px;margin-top:6px}
+.stat.edit .n{color:var(--amber)} .stat.view .n{color:var(--cool)} .stat.pub .n{color:var(--red)}
+
+/* toolbar */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.chips{display:flex;gap:0;border:1px solid var(--line);max-width:100%;overflow-x:auto}
+.chip{border:0;border-right:1px solid var(--line);background:transparent;color:var(--mute);padding:9px 12px}
+.chip:last-child{border-right:0}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.toolbar .grow{flex:1;min-width:200px}
+.toolbar select{width:auto}
+
+/* table */
+.tablewrap{border:1px solid var(--line);overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:900px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-weight:500;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;font-size:10.5px;background:var(--panel);position:sticky;top:0;z-index:1}
+tbody tr:hover{background:var(--panel)}
+tbody tr.sel{background:rgba(255,77,46,.06)}
+tr.gone td{opacity:.38} tr.gone .name{text-decoration:line-through}
+td.cb,th.cb{width:38px}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--red);cursor:pointer}
+input[type=checkbox]:disabled{cursor:not-allowed;opacity:.3}
+.name{color:var(--ink);font-weight:500;word-break:break-all}
+.path{color:var(--dim);font-size:11.5px;word-break:break-all}
+.tag{display:inline-block;padding:2px 7px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;border:1px solid}
+.tag.edit{color:var(--amber);border-color:rgba(242,179,61,.4);background:var(--amber-bg)}
+.tag.view{color:var(--cool);border-color:rgba(134,184,204,.4);background:var(--cool-bg)}
+.aud{color:var(--mute)} .aud.public{color:var(--red)}
+.type{color:var(--mute)}
+.linkops{display:flex;gap:6px}
+.linkops a,.linkops button{padding:3px 8px;font-size:11px;border:1px solid var(--line);background:transparent;color:var(--mute);text-decoration:none}
+.linkops a:hover,.linkops button:hover{color:var(--ink);border-color:var(--mute)}
+.st{font-size:11.5px;color:var(--dim)}
+.st.ok{color:var(--ok)} .st.err{color:var(--red)} .st.busy{color:var(--amber)}
+.empty{padding:60px 20px;text-align:center;color:var(--mute)}
+.empty .big{font:italic 400 34px/1.1 "Instrument Serif",Georgia,serif;color:var(--ink);margin-bottom:8px}
+
+/* action bar */
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:var(--bg);transform:translateY(110%);transition:transform .2s ease;z-index:5}
+.bar.on{transform:none}
+.bar .inner{max-width:1280px;margin:0 auto;padding:14px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.bar .count{font:400 30px/1 "Instrument Serif",Georgia,serif}
+.bar .bd{color:#5a534b;flex:1}
+.bar button{border-color:#0d0c0b33;background:transparent;color:var(--bg)}
+.bar .btn-red{background:var(--red);color:#120806;border-color:var(--red)}
+
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+.scrim.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);max-width:520px;width:100%;padding:26px}
+.modal h2{font:400 38px/1 "Instrument Serif",Georgia,serif;margin:0 0 12px}
+.modal p{color:var(--mute);margin:0 0 10px}
+.modal ul{margin:0 0 16px;padding-left:18px;color:var(--ink)}
+.modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.progress{height:3px;background:var(--line);margin-top:10px;display:none}
+.progress i{display:block;height:100%;width:0;background:var(--red);transition:width .15s}
+
+@media (max-width:720px){
+  h1{font-size:54px}
+  .stats{grid-template-columns:repeat(3,1fr)}
+  .stat:nth-child(3){border-right:0}
+  .stat:nth-child(n+4){border-top:1px solid var(--line)}
+  .connect{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Unshare<em>.</em></h1>
+    <p class="sub">Every Dropbox shared link you own, in one list. Tick what you don't need and <b>revoke in bulk</b>. Your token stays in this tab only; nothing is saved or sent anywhere but Dropbox.</p>
+  </header>
+
+  <div class="connect">
+    <input id="token" type="password" placeholder="Paste a Dropbox access token (sl.…)" autocomplete="off" spellcheck="false">
+    <button id="load" class="btn-red">Load links</button>
+  </div>
+  <details class="how">
+    <summary>How to get a token (2 min)</summary>
+    <ol>
+      <li>Go to <a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">dropbox.com/developers/apps</a> → <b>Create app</b> → <i>Scoped access</i> → <i>Full Dropbox</i> → any name (e.g. <code>unshare-links</code>).</li>
+      <li>Open the <b>Permissions</b> tab, tick <code>sharing.read</code> and <code>sharing.write</code>, then <b>Submit</b>. Do this <i>before</i> generating the token.</li>
+      <li>Back on <b>Settings</b>, under <i>OAuth 2 → Generated access token</i>, click <b>Generate</b> and paste it above. It expires after ~4 hours.</li>
+      <li>When you're done, delete the app on that page to kill the token.</li>
+    </ol>
+  </details>
+  <div id="msg" class="msg"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="n" id="sTotal">—</div><div class="l">Links</div></div>
+    <div class="stat view"><div class="n" id="sView">—</div><div class="l">View</div></div>
+    <div class="stat edit"><div class="n" id="sEdit">—</div><div class="l">Edit</div></div>
+    <div class="stat pub"><div class="n" id="sPub">—</div><div class="l">Public</div></div>
+    <div class="stat"><div class="n" id="sGone">0</div><div class="l">Revoked here</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="chips" role="group" aria-label="Filter">
+      <button class="chip" data-f="all" aria-pressed="true">All</button>
+      <button class="chip" data-f="view" aria-pressed="false">View</button>
+      <button class="chip" data-f="edit" aria-pressed="false">Edit</button>
+      <button class="chip" data-f="folder" aria-pressed="false">Folders</button>
+      <button class="chip" data-f="file" aria-pressed="false">Files</button>
+      <button class="chip" data-f="public" aria-pressed="false">Public</button>
+      <button class="chip" data-f="failed" aria-pressed="false">Failed</button>
+    </div>
+    <input id="q" class="grow" type="search" placeholder="Filter by name or path…">
+    <select id="sort" aria-label="Sort">
+      <option value="path">Sort: path</option>
+      <option value="name">Sort: name</option>
+      <option value="access">Sort: edit first</option>
+      <option value="expires">Sort: expiry</option>
+    </select>
+    <button id="csv" disabled>Export CSV</button>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th class="cb"><input type="checkbox" id="all" title="Select all shown" disabled></th>
+        <th>Name / path</th><th>Type</th><th>Access</th><th>Audience</th><th>Expires</th><th>Link</th><th>Status</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty"><div class="big">Nothing loaded yet.</div>Paste a token and hit Load links.</div>
+  </div>
+</div>
+
+<div class="bar" id="bar"><div class="inner">
+  <span class="count" id="bCount">0</span><span class="bd" id="bBreak"></span>
+  <button id="clear">Clear selection</button>
+  <button id="revoke" class="btn-red">Revoke selected</button>
+</div></div>
+
+<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <h2 id="mTitle">Revoke <span id="mN">0</span> links?</h2>
+  <p>Anyone using these URLs will lose access straight away. The files themselves aren't touched. If you share again later, Dropbox makes a <b>new</b> URL.</p>
+  <ul id="mList"></ul>
+  <p>Tip: Export CSV first if you want a record of what was revoked.</p>
+  <div class="progress" id="prog"><i></i></div>
+  <div class="row"><button id="mCancel">Cancel</button><button id="mGo" class="btn-red">Revoke</button></div>
+</div></div>
+
+<script>
+(() => {
+const API = 'https://api.dropboxapi.com/2/';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const DEMO = location.hash === '#demo';
+
+let token = '', links = [], sel = new Set(), filter = 'all', q = '', sortKey = 'path', busy = false, revokedCount = 0;
+let onWait = s => setMsg(`Dropbox is rate-limiting, pausing ${s}s…`);
+
+function setMsg(t, cls = '') { const m = $('#msg'); m.textContent = t; m.className = 'msg ' + cls; }
+
+async function call(ep, body, attempt = 0) {
+  if (DEMO) return demoCall(ep, body);
+  const backoff = a => [3, 6, 12, 20, 30, 45, 60][Math.min(a, 6)];
+  let r;
+  try {
+    r = await fetch(API + ep, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? null)
+    });
+  } catch (err) {
+    // Dropbox's rate-limit (429) replies lack CORS headers, so the browser reports
+    // a bare "Failed to fetch". Treat it as throttling: wait and retry.
+    if (attempt < 7) { const s = backoff(attempt); onWait(s); await sleep(s * 1000); return call(ep, body, attempt + 1); }
+    throw new Error('Network/throttle error after retries');
+  }
+  if ((r.status === 429 || r.status >= 500) && attempt < 7) {
+    const s = Number(r.headers.get('Retry-After')) || backoff(attempt);
+    onWait(s); await sleep(s * 1000); return call(ep, body, attempt + 1);
+  }
+  const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch {}
+  if (!r.ok) { const e = new Error((j && j.error_summary) || txt || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+  return j;
+}
+
+function norm(l) {
+  const p = l.link_permissions || {};
+  const lal = p.link_access_level && p.link_access_level['.tag'];
+  const access = (lal === 'editor' || lal === 'max') ? 'edit' : 'view';
+  const aud = (p.effective_audience && p.effective_audience['.tag']) || (p.resolved_visibility && p.resolved_visibility['.tag']) || 'unknown';
+  return {
+    url: l.url, name: l.name || '(unnamed)', path: l.path_lower || '', type: l['.tag'] === 'folder' ? 'folder' : 'file',
+    access, aud, expires: l.expires || '', canRevoke: p.can_revoke !== false,
+    why: p.revoke_failure_reason ? (p.revoke_failure_reason['.tag'] || '') : '', status: '', statusCls: ''
+  };
+}
+
+async function loadAll() {
+  token = $('#token').value.trim();
+  if (!token && !DEMO) { setMsg('Paste a token first.', 'err'); return; }
+  busy = true; $('#load').disabled = true; links = []; sel.clear(); revokedCount = 0;
+  setMsg('Loading…');
+  try {
+    const seen = new Set();
+    let res = await call('sharing/list_shared_links', {});
+    for (;;) {
+      for (const l of res.links || []) if (!seen.has(l.url)) { seen.add(l.url); links.push(norm(l)); }
+      setMsg('Loading… ' + links.length + ' links so far');
+      if (!res.has_more || !res.cursor) break;
+      res = await call('sharing/list_shared_links', { cursor: res.cursor });
+    }
+    setMsg('Loaded ' + links.length + ' links.', 'ok');
+  } catch (e) {
+    let hint = e.message;
+    if (e.status === 401) hint = 'Token rejected (expired or invalid). Generate a fresh one.';
+    else if (/missing_scope/.test(e.message)) hint = 'Token is missing a permission. Tick sharing.read + sharing.write on the Permissions tab, then generate a NEW token.';
+    else if (e instanceof TypeError) hint = 'Network error reaching Dropbox: ' + e.message;
+    setMsg(hint, 'err');
+  } finally { busy = false; $('#load').disabled = false; render(); }
+}
+
+function visible() {
+  const needle = q.toLowerCase();
+  let v = links.filter(l => {
+    if (filter === 'view' && l.access !== 'view') return false;
+    if (filter === 'edit' && l.access !== 'edit') return false;
+    if (filter === 'folder' && l.type !== 'folder') return false;
+    if (filter === 'file' && l.type !== 'file') return false;
+    if (filter === 'public' && l.aud !== 'public') return false;
+    if (filter === 'failed' && l.statusCls !== 'err') return false;
+    if (needle && !(l.name.toLowerCase().includes(needle) || l.path.includes(needle))) return false;
+    return true;
+  });
+  const cmp = {
+    path: (a, b) => (a.path || '~' + a.name).localeCompare(b.path || '~' + b.name),
+    name: (a, b) => a.name.localeCompare(b.name),
+    access: (a, b) => (a.access === b.access ? 0 : a.access === 'edit' ? -1 : 1) || a.path.localeCompare(b.path),
+    expires: (a, b) => (a.expires || '9999').localeCompare(b.expires || '9999')
+  }[sortKey];
+  return v.sort(cmp);
+}
+const selectable = l => l.canRevoke && l.statusCls !== 'gone';
+
+function render() {
+  const live = links.filter(l => l.statusCls !== 'gone');
+  $('#sTotal').textContent = links.length ? live.length : '—';
+  $('#sView').textContent = links.length ? live.filter(l => l.access === 'view').length : '—';
+  $('#sEdit').textContent = links.length ? live.filter(l => l.access === 'edit').length : '—';
+  $('#sPub').textContent = links.length ? live.filter(l => l.aud === 'public').length : '—';
+  $('#sGone').textContent = revokedCount;
+  $('#csv').disabled = !links.length;
+
+  const v = visible();
+  $('#empty').style.display = v.length ? 'none' : 'block';
+  if (!v.length && links.length) $('#empty').innerHTML = '<div class="big">No matches.</div>Try another filter.';
+  $('#rows').innerHTML = v.map(l => {
+    const gone = l.statusCls === 'gone', on = sel.has(l.url);
+    const audTxt = l.aud.replace(/_/g, ' ');
+    const exp = l.expires ? l.expires.slice(0, 10) : '—';
+    const st = !l.canRevoke ? `<span class="st" title="${esc(l.why)}">can't revoke${l.why ? ' · ' + esc(l.why.replace(/_/g, ' ')) : ''}</span>`
+      : `<span class="st ${l.statusCls === 'gone' ? 'ok' : esc(l.statusCls)}">${esc(l.status)}</span>`;
+    return `<tr data-u="${esc(l.url)}" class="${gone ? 'gone' : ''}${on ? ' sel' : ''}">
+      <td class="cb"><input type="checkbox" ${on ? 'checked' : ''} ${selectable(l) && !busy ? '' : 'disabled'} aria-label="Select ${esc(l.name)}"></td>
+      <td><div class="name">${esc(l.name)}</div><div class="path">${esc(l.path || '(not in your Dropbox)')}</div></td>
+      <td class="type">${l.type}</td>
+      <td><span class="tag ${l.access}">${l.access}</span></td>
+      <td class="aud ${l.aud === 'public' ? 'public' : ''}">${esc(audTxt)}</td>
+      <td class="type">${exp}</td>
+      <td><div class="linkops"><a href="${esc(l.url)}" target="_blank" rel="noopener">open</a><button data-copy="1">copy</button></div></td>
+      <td>${st}</td></tr>`;
+  }).join('');
+
+  const sv = v.filter(selectable), allBox = $('#all');
+  const nSel = sv.filter(l => sel.has(l.url)).length;
+  allBox.disabled = !sv.length || busy;
+  allBox.checked = sv.length > 0 && nSel === sv.length;
+  allBox.indeterminate = nSel > 0 && nSel < sv.length;
+
+  const chosen = links.filter(l => sel.has(l.url));
+  $('#bar').classList.toggle('on', chosen.length > 0);
+  $('#bCount').textContent = chosen.length + ' selected';
+  const e = chosen.filter(l => l.access === 'edit').length;
+  $('#bBreak').textContent = `${chosen.length - e} view · ${e} edit · ${chosen.filter(l => l.aud === 'public').length} public`;
+  $('#revoke').disabled = busy;
+}
+
+// events
+$('#load').onclick = loadAll;
+$('#token').addEventListener('keydown', e => { if (e.key === 'Enter') loadAll(); });
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+  filter = c.dataset.f; document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === c)); render();
+});
+$('#q').oninput = e => { q = e.target.value; render(); };
+$('#sort').onchange = e => { sortKey = e.target.value; render(); };
+$('#all').onchange = e => { visible().filter(selectable).forEach(l => e.target.checked ? sel.add(l.url) : sel.delete(l.url)); render(); };
+$('#clear').onclick = () => { sel.clear(); render(); };
+$('#rows').addEventListener('click', async e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const url = tr.dataset.u;
+  if (e.target.matches('button[data-copy]')) {
+    try { await navigator.clipboard.writeText(url); e.target.textContent = 'copied'; setTimeout(() => e.target.textContent = 'copy', 1200); } catch {}
+    return;
+  }
+  if (e.target.matches('input[type=checkbox]')) { e.target.checked ? sel.add(url) : sel.delete(url); render(); }
+});
+$('#csv').onclick = () => {
+  const head = ['name', 'path', 'type', 'access', 'audience', 'expires', 'can_revoke', 'status', 'url'];
+  const q2 = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  const rows = links.map(l => [l.name, l.path, l.type, l.access, l.aud, l.expires, l.canRevoke, l.statusCls === 'gone' ? 'revoked' : l.status, l.url].map(q2).join(','));
+  const blob = new Blob([head.join(',') + '\n' + rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'dropbox-shared-links-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+
+// confirm + revoke
+const scrim = $('#scrim');
+function openModal() {
+  const chosen = links.filter(l => sel.has(l.url)); if (!chosen.length) return;
+  $('#mN').textContent = chosen.length;
+  const e = chosen.filter(l => l.access === 'edit').length, f = chosen.filter(l => l.type === 'folder').length;
+  $('#mList').innerHTML = `<li>${chosen.length - e} view links, ${e} edit links</li><li>${f} folders, ${chosen.length - f} files</li>` +
+    chosen.slice(0, 5).map(l => `<li class="path">${esc(l.path || l.name)}</li>`).join('') + (chosen.length > 5 ? `<li class="path">…and ${chosen.length - 5} more</li>` : '');
+  $('#prog').style.display = 'none'; $('#prog i').style.width = '0';
+  $('#mGo').disabled = false; $('#mCancel').disabled = false; $('#mGo').textContent = 'Revoke ' + chosen.length;
+  scrim.classList.add('on'); $('#mCancel').focus();
+}
+function closeModal() { if (!busy) scrim.classList.remove('on'); }
+$('#revoke').onclick = openModal;
+$('#mCancel').onclick = closeModal;
+scrim.addEventListener('click', e => { if (e.target === scrim) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+let stopReq = false;
+$('#mGo').onclick = async () => {
+  if (busy) { stopReq = true; $('#mGo').textContent = 'Stopping…'; $('#mGo').disabled = true; return; }
+  const queue = links.filter(l => sel.has(l.url)); const total = queue.length; let done = 0, ok = 0, fail = 0;
+  busy = true; stopReq = false; $('#mCancel').disabled = true; $('#prog').style.display = 'block';
+  queue.forEach(l => { l.status = 'queued'; l.statusCls = 'busy'; }); render();
+  onWait = s => setMsg(`Dropbox is rate-limiting, pausing ${s}s then carrying on… (${done}/${total} done)`);
+  const worker = async () => {
+    while (queue.length && !stopReq) {
+      const l = queue.shift(); l.status = 'revoking…';
+      try {
+        await call('sharing/revoke_shared_link', { url: l.url });
+        l.status = 'revoked'; l.statusCls = 'gone'; ok++; revokedCount++;
+      } catch (e) {
+        if (/shared_link_not_found/.test(e.message)) { l.status = 'already gone'; l.statusCls = 'gone'; ok++; revokedCount++; }
+        else { l.status = e.message.replace(/\/\.+$/, ''); l.statusCls = 'err'; fail++; }
+      }
+      if (l.statusCls !== 'err') sel.delete(l.url);
+      done++;
+      $('#prog i').style.width = (done / total * 100) + '%';
+      if (!stopReq) $('#mGo').textContent = `Stop (${done} / ${total})`;
+      setMsg(`Revoking… ${done} / ${total}`);
+      render();
+      await sleep(DEMO ? 20 : 350); // gentle pace keeps us under Dropbox's rate limit
+    }
+  };
+  $('#mGo').textContent = 'Stop'; $('#mGo').disabled = false;
+  await worker();
+  queue.forEach(l => { l.status = 'not attempted'; l.statusCls = ''; });
+  busy = false; onWait = () => {}; scrim.classList.remove('on');
+  const left = total - done;
+  setMsg(`Revoked ${ok} link${ok === 1 ? '' : 's'}` + (fail ? ` · ${fail} failed (still ticked, filter "Failed" to review)` : '') + (left ? ` · stopped, ${left} not attempted` : '') + '.', fail || left ? 'err' : 'ok');
+  render();
+};
+
+// demo mode (#demo) for previewing the UI without a token
+const DEMO_DATA = (() => {
+  const names = ['Client_Pitch_2026', 'brand_refs.zip', 'OOH_campaign_v04.mp4', 'print_layouts.pdf', 'promo_cut3.mov', 'Motion_Library', 'quote_draft.pdf', 'C4D_assets', 'headshot.jpg', 'Studio_Shoot', 'storyboard_v2.pdf', 'render_0420.exr'];
+  const auds = ['public', 'public', 'public', 'team_only', 'password', 'no_one'];
+  return Array.from({ length: 64 }, (_, i) => {
+    const n = names[i % names.length] + (i >= names.length ? ` (${Math.floor(i / names.length)})` : '');
+    const folder = !/\./.test(names[i % names.length]);
+    return { '.tag': folder ? 'folder' : 'file', url: 'https://www.dropbox.com/scl/demo/' + i, name: n, path_lower: '/projects/2026/' + n.toLowerCase(),
+      expires: i % 7 === 0 ? '2026-12-01T00:00:00Z' : undefined,
+      link_permissions: { can_revoke: i % 23 !== 5, revoke_failure_reason: i % 23 === 5 ? { '.tag': 'owner_only' } : undefined,
+        link_access_level: { '.tag': i % 4 === 0 ? 'editor' : 'viewer' }, effective_audience: { '.tag': auds[i % auds.length] } } };
+  });
+})();
+async function demoCall(ep, body) {
+  await sleep(120 + Math.random() * 200);
+  if (ep === 'sharing/list_shared_links') {
+    const start = body && body.cursor ? +body.cursor : 0, end = start + 25;
+    return { links: DEMO_DATA.slice(start, end), has_more: end < DEMO_DATA.length, cursor: String(end) };
+  }
+  if (ep === 'sharing/revoke_shared_link') { if (Math.random() < 0.06) throw new Error('shared_link_access_denied/..'); return null; }
+}
+if (DEMO) { $('#token').value = 'demo-mode'; setMsg('Demo mode: fake data, nothing touches Dropbox.'); loadAll(); }
+render();
+})();
+</script>
+</body>
+</html>
