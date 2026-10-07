@@ -1,0 +1,268 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>How Unshare Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+/* Layout: a single reading column with a sticky contents rail on wide screens; companion to the Unshare tool's darkroom look. */
+:root{
+  --bg:#0f0e0c; --panel:#171512; --line:#2c2823; --ink:#ece6dc; --mute:#968d82; --dim:#655e56;
+  --accent:#ff5a3c; --ok:#86c98a; --code-bg:#1d1a17;
+  --display:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#f3f0ea; --panel:#ebe6dd; --line:#d6cfc3; --ink:#1b1916; --mute:#5f584f; --dim:#8a8277;
+  --accent:#c4361c; --ok:#2f7a37; --code-bg:#e7e1d6; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#f3f0ea; --panel:#ebe6dd; --line:#d6cfc3; --ink:#1b1916; --mute:#5f584f; --dim:#8a8277;
+  --accent:#c4361c; --ok:#2f7a37; --code-bg:#e7e1d6; color-scheme:light}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.65 var(--body);margin:0}
+.page{max-width:1120px;margin:0 auto;padding-inline:20px;padding-block:48px 96px;display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 24px);align-self:start;font:12px/1.5 var(--mono)}
+nav.toc p{color:var(--dim);text-transform:uppercase;letter-spacing:.14em;font-size:10.5px;margin:0 0 10px}
+nav.toc a{display:block;color:var(--mute);text-decoration:none;padding:5px 0;border-left:1px solid var(--line);padding-left:12px}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--ink);border-left-color:var(--accent);outline:none}
+main{min-width:0}
+a{color:var(--ink);text-decoration-color:var(--accent);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:8px}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 16px}
+h1{font:400 clamp(44px,7vw,78px)/.95 var(--display);margin:0 0 18px;letter-spacing:-1px;text-wrap:balance}
+h1 em{font-style:italic;color:var(--accent)}
+.lede{font-size:19px;line-height:1.55;max-width:62ch;margin:0;color:var(--ink)}
+.meta{font:12px/1.6 var(--mono);color:var(--mute);margin-top:18px}
+
+h2{font:400 36px/1.1 var(--display);margin:56px 0 14px;text-wrap:balance;scroll-margin-top:24px}
+h3{font:600 13px/1.4 var(--mono);letter-spacing:.04em;margin:28px 0 6px;color:var(--ink)}
+p,li{max-width:66ch}
+p{margin:0 0 14px}
+.mute{color:var(--mute)}
+code{font:13.5px var(--mono);background:var(--code-bg);border:1px solid var(--line);padding:1px 5px;border-radius:2px;overflow-wrap:anywhere}
+pre{font:13px/1.6 var(--mono);background:var(--code-bg);border:1px solid var(--line);padding:14px 16px;margin:10px 0 18px;overflow-x:auto;border-radius:2px;max-width:100%}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+.c{color:var(--dim)}
+
+/* verdict list */
+.verdicts{list-style:none;padding:0;margin:28px 0 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--line)}
+.verdicts li{padding:16px 18px 16px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;max-width:none}
+.verdicts li:nth-child(odd){padding-right:24px}
+.verdicts .tick{font:600 14px/1.5 var(--mono);color:var(--ok)}
+.verdicts b{display:block;font-weight:500}
+.verdicts span.d{color:var(--mute);font-size:14.5px}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);margin:12px 0 18px}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 10.5px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--mute);background:var(--panel)}
+tr:last-child td{border-bottom:0}
+td code{font-size:12.5px}
+.when{font:12px/1.5 var(--mono);color:var(--mute);white-space:nowrap}
+
+/* lifecycle */
+.flow{list-style:none;padding:0;margin:14px 0 18px;counter-reset:s}
+.flow li{counter-increment:s;position:relative;padding:0 0 16px 40px;max-width:66ch}
+.flow li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border:1px solid var(--line);border-radius:50%;font:500 11px/22px var(--mono);text-align:center;color:var(--mute)}
+.flow li:not(:last-child)::after{content:"";position:absolute;left:12px;top:28px;bottom:2px;border-left:1px dashed var(--line)}
+
+/* code walkthrough */
+.part{border-top:1px solid var(--line);padding-top:4px;margin-top:22px}
+.part h3 code{background:none;border:0;padding:0;color:var(--accent);font-size:13px}
+
+.never{columns:2;column-gap:32px;padding-left:18px;margin:10px 0 18px}
+.never li{break-inside:avoid;margin-bottom:6px}
+
+.hash{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:8px 0 18px}
+.hash code{flex:1;min-width:0;display:block;padding:10px 12px;font-size:12.5px;word-break:break-all}
+button{font:500 12px var(--mono);background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:8px 14px;cursor:pointer;border-radius:2px}
+button:hover{border-color:var(--mute)}
+.note{border-left:2px solid var(--accent);padding:4px 0 4px 16px;margin:18px 0;color:var(--ink);max-width:66ch}
+
+@media (max-width:820px){
+  .page{grid-template-columns:minmax(0,1fr);gap:0;padding-block:28px 72px;padding-inline:16px}
+  nav.toc{display:none}
+  .verdicts{grid-template-columns:minmax(0,1fr)}
+  .verdicts li:nth-child(odd){padding-right:0}
+  .never{columns:1}
+  h2{font-size:30px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+</head><body><div class="page">
+  <nav class="toc" aria-label="Contents">
+    <p>Contents</p>
+    <a href="#summary">Summary</a>
+    <a href="#network">Every connection</a>
+    <a href="#token">Your token</a>
+    <a href="#permissions">Permissions</a>
+    <a href="#code">The code, part by part</a>
+    <a href="#never">What it never does</a>
+    <a href="#verify">Check it yourself</a>
+  </nav>
+
+  <main>
+    <header id="summary"><p style="margin:0 0 18px;font:12px var(--mono)"><a href="./">← Back to Unshare</a></p>
+      <p class="eyebrow">Unshare · safety notes</p>
+      <h1>What the code <em>actually</em> does</h1>
+      <p class="lede">Unshare is a single web page that lists your Dropbox shared links and lets you switch them off in bulk. It runs entirely in your own browser, talks only to Dropbox, and has no server of its own. Below is every connection it makes and what each part of its JavaScript is for.</p>
+      <p class="meta">Reviewed file: <a href="https://github.com/jameslashmar/Chroma_motion_scripts/blob/main/docs/unshare/index.html">unshare/index.html</a> · 444 lines · one inline script, no external scripts · 7 Oct 2026</p>
+
+      <ul class="verdicts">
+        <li><span class="tick">✓</span><div><b>Talks to one service</b><span class="d">Dropbox's official API at api.dropboxapi.com. There's no other server, analytics or tracking.</span></div></li>
+        <li><span class="tick">✓</span><div><b>Uses two Dropbox actions</b><span class="d">"List my shared links" and "revoke this shared link". Nothing else.</span></div></li>
+        <li><span class="tick">✓</span><div><b>Doesn't store your token</b><span class="d">It's held in memory for as long as the tab is open, then it's gone.</span></div></li>
+        <li><span class="tick">✓</span><div><b>Can't read or delete files</b><span class="d">The token only carries sharing permissions. Your files are never opened, moved or deleted.</span></div></li>
+        <li><span class="tick">✓</span><div><b>Nothing happens without a click</b><span class="d">Loading is read-only. Revoking needs you to tick links and confirm in a dialog.</span></div></li>
+        <li><span class="tick">✓</span><div><b>No hidden code</b><span class="d">The script is plain, readable JavaScript in the file itself. It's not minified and loads nothing from elsewhere.</span></div></li>
+      </ul>
+    </header>
+
+    <section id="network">
+      <h2>Every connection the page makes</h2>
+      <p>This is the complete list. You can confirm it in your browser's developer tools (see <a href="#verify">Check it yourself</a>).</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Destination</th><th>When</th><th>What's sent</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><code>api.dropboxapi.com/2/sharing/list_shared_links</code></td><td class="when">You click Load links</td><td>Your token, plus a page marker if there are more than one page of links</td><td>Fetches the list of links you own: name, path, link URL, access level and audience.</td></tr>
+          <tr><td><code>api.dropboxapi.com/2/sharing/revoke_shared_link</code></td><td class="when">You confirm Revoke</td><td>Your token and one link URL per request</td><td>Turns that single link off. One request per link, a couple per second at most.</td></tr>
+          <tr><td><code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code></td><td class="when">Page opens</td><td>A normal font download. None of your data is included.</td><td>Loads the two typefaces. Google sees your IP address, as with any site using Google Fonts. If you run a local copy, delete the three font lines at the top of the file to remove this; the page falls back to system fonts.</td></tr>
+          <tr><td>Any link you click</td><td class="when">Only on click</td><td>Nothing from the page</td><td>"open" next to a row opens that Dropbox link in a new tab. The token help links to Dropbox's developer site, and "What the code does" opens this explainer.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="mute">All Dropbox traffic uses HTTPS. The page makes no requests in the background and has no timers that phone home.</p>
+    </section>
+
+    <section id="token">
+      <h2>What happens to your token</h2>
+      <ol class="flow">
+        <li>You create it yourself on Dropbox's developer site, for an app only you own.</li>
+        <li>You paste it into a password field, so it's masked on screen.</li>
+        <li>When you click Load links, it's copied into a variable inside the page's script. It's never written to cookies, <code>localStorage</code>, the address bar or any file.</li>
+        <li>It's sent only in the <code>Authorization</code> header of requests to <code>api.dropboxapi.com</code>.</li>
+        <li>Closing or reloading the tab erases it. Deleting the app on Dropbox's developer page kills it everywhere, and it expires on its own after about four hours anyway.</li>
+      </ol>
+    </section>
+
+    <section id="permissions">
+      <h2>What the token is allowed to do</h2>
+      <p>Dropbox limits each token to the permissions ("scopes") ticked on the app. Unshare asks for only two:</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Scope</th><th>Allows</th><th>Doesn't allow</th></tr></thead>
+        <tbody>
+          <tr><td><code>sharing.read</code></td><td>Seeing your shared links and their settings</td><td>Opening, downloading or reading any file's contents</td></tr>
+          <tr><td><code>sharing.write</code></td><td>Creating, changing or revoking shared links and shared-folder membership</td><td>Deleting, moving or editing files; changing account settings, email or password</td></tr>
+        </tbody>
+      </table></div>
+      <p class="mute">Unshare's code only ever uses <code>sharing.write</code> to revoke links. It never creates links or changes folder membership, even though the scope would technically allow it.</p>
+    </section>
+
+    <section id="code">
+      <h2>The code, part by part</h2>
+      <p>The script runs top to bottom inside one self-contained function, so nothing leaks into other pages or tabs. Here's every part in order.</p>
+
+      <div class="part">
+        <h3><code>call()</code> · the only function that talks to Dropbox</h3>
+        <p>It sends a request to <code>api.dropboxapi.com</code> with your token. If Dropbox says "slow down" (rate limiting), or the browser can't read the reply, it waits and tries again: 3, 6, 12, 20, 30, 45, then 60 seconds. It gives up after seven retries. Every network request in the tool goes through here.</p>
+<pre><code>const API = 'https://api.dropboxapi.com/2/';   <span class="c">// the only server address in the script</span>
+r = await fetch(API + ep, {
+  method: 'POST',
+  headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+  body: JSON.stringify(body ?? null)
+});</code></pre>
+      </div>
+
+      <div class="part">
+        <h3><code>norm()</code> · tidies each link</h3>
+        <p>It turns Dropbox's raw link data into the fields the table shows: name, path, file or folder, view or edit, audience (public, team, password), expiry, and whether you're allowed to revoke it. It's pure data shaping with no network access.</p>
+      </div>
+
+      <div class="part">
+        <h3><code>loadAll()</code> · fetches your list</h3>
+        <p>It runs when you click Load links. It asks Dropbox for your shared links and keeps asking for the next page until there are none left, skipping duplicates. If something goes wrong it explains in plain words, for example "token expired" or "missing permission". This step is read-only.</p>
+      </div>
+
+      <div class="part">
+        <h3><code>visible()</code> and <code>render()</code> · draw the table</h3>
+        <p>These apply your filter, search and sort, then draw the rows, the totals and the selection bar. Every file name and path goes through <code>esc()</code> before it's shown. That converts characters like <code>&lt;</code> and <code>"</code> into harmless text, so a file with a strange name can't inject code into the page.</p>
+      </div>
+
+      <div class="part">
+        <h3>Event handlers · your clicks</h3>
+        <p>These handle the filter buttons, the search box, sorting, the tick boxes and select all. Select all only ticks rows that are currently visible and revocable. The "copy" button puts one link on your clipboard. Nothing here contacts Dropbox.</p>
+      </div>
+
+      <div class="part">
+        <h3>Export CSV · a local download</h3>
+        <p>It builds a spreadsheet of the list in memory and saves it straight to your computer's Downloads folder. The file is created inside your browser and never uploaded anywhere.</p>
+      </div>
+
+      <div class="part">
+        <h3>Revoke flow · the only part that changes anything</h3>
+        <p>Clicking Revoke selected opens a confirmation box showing how many view and edit links, files and folders you're about to switch off. Nothing happens until you press the red Revoke button inside it. Then it:</p>
+        <ul>
+          <li>sends one revoke request per ticked link, one at a time, about 0.35 seconds apart</li>
+          <li>marks each row "revoked", or shows Dropbox's reason if one fails</li>
+          <li>leaves failed links ticked so you can retry them, under the Failed filter</li>
+          <li>stops the moment you press Stop, leaving the remaining links untouched</li>
+        </ul>
+        <p>Revoking only disables the link URL. The file or folder itself stays exactly where it is.</p>
+      </div>
+
+      <div class="part">
+        <h3>Demo mode · fake data</h3>
+        <p>If you open <a href="./#demo">the page with <code>#demo</code></a> at the end of the address, it loads 64 made-up links and simulates revoking them. In this mode the script never contacts Dropbox, so you can try the whole flow without a token.</p>
+      </div>
+    </section>
+
+    <section id="never">
+      <h2>What it never does</h2>
+      <ul class="never">
+        <li>Read, download, move or delete files</li>
+        <li>Create new shared links</li>
+        <li>Change folder membership or invite anyone</li>
+        <li>Save your token or link list in the browser</li>
+        <li>Send data to any server other than Dropbox</li>
+        <li>Load scripts from other websites</li>
+        <li>Use analytics, cookies or tracking pixels</li>
+        <li>Run anything in the background or after you close the tab</li>
+      </ul>
+    </section>
+
+    <section id="verify">
+      <h2>Check it yourself</h2>
+      <h3>1 · Read the source</h3>
+      <p>Press Ctrl+U (⌥⌘U on a Mac) on the Unshare page, or read <a href="https://github.com/jameslashmar/Chroma_motion_scripts/blob/main/docs/unshare/index.html">the file on GitHub</a>, where every change to it is in the public history. The script is near the bottom, in plain readable JavaScript. Search for <code>fetch(</code>: it appears once, inside <code>call()</code>, pointing at <code>api.dropboxapi.com</code>. There are no <code>&lt;script src=…&gt;</code> tags.</p>
+
+      <h3>2 · Watch the traffic</h3>
+      <p>In Chrome, press F12 and open the Network tab, then use the page. You'll only see requests to <code>api.dropboxapi.com</code> plus the Google Fonts files.</p>
+
+      <h3>3 · Confirm you have the reviewed file</h3>
+      <p>The SHA-256 fingerprint of the page described here is below. If what your browser is served matches, it's byte-for-byte the same file. On Windows run <code>curl.exe -s https://jameslashmar.github.io/Chroma_motion_scripts/unshare/ -o unshare.html</code> then <code>certutil -hashfile unshare.html SHA256</code>; on Mac run <code>curl -s https://jameslashmar.github.io/Chroma_motion_scripts/unshare/ | shasum -a 256</code>.</p>
+      <div class="hash">
+        <code id="sha">31ae5bf0361ac8f44d0e708fa3fefec4c4f92cc918c8fabe1c0b0ccc680b4f06</code>
+        <button id="copyHash" type="button">Copy</button>
+      </div>
+      <p class="note">If the fingerprint doesn't match, the file has been changed since this review. That might be a later update, but don't paste a token into it until someone has re-checked it.</p>
+
+      <h3>4 · Clean up afterwards</h3>
+      <p>Delete the app at <a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">dropbox.com/developers/apps</a> when you're done. Any token made for it stops working immediately.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+document.getElementById('copyHash').addEventListener('click', async e => {
+  const t = document.getElementById('sha');
+  try { await navigator.clipboard.writeText(t.textContent.trim()); e.target.textContent = 'Copied'; }
+  catch { const r = document.createRange(); r.selectNodeContents(t); const s = getSelection(); s.removeAllRanges(); s.addRange(r); e.target.textContent = 'Selected'; }
+  setTimeout(() => e.target.textContent = 'Copy', 1500);
+});
+</script>
+</body></html>

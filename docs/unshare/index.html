@@ -23,6 +23,7 @@ h1{font:400 76px/0.9 "Instrument Serif",Georgia,serif;margin:0;letter-spacing:-1
 h1 em{color:var(--red);font-style:italic}
 .sub{color:var(--mute);max-width:440px}
 .sub b{color:var(--ink);font-weight:500}
+.sub .safe{color:var(--ink);white-space:nowrap;text-decoration-color:var(--red);text-underline-offset:3px}
 
 /* connect */
 .connect{display:grid;grid-template-columns:1fr auto;gap:10px;margin:22px 0 8px}
@@ -119,7 +120,7 @@ input[type=checkbox]:disabled{cursor:not-allowed;opacity:.3}
 <div class="wrap">
   <header>
     <h1>Unshare<em>.</em></h1>
-    <p class="sub">Every Dropbox shared link you own, in one list. Tick what you don't need and <b>revoke in bulk</b>. Your token stays in this tab only; nothing is saved or sent anywhere but Dropbox.</p>
+    <p class="sub">Every Dropbox shared link you own, in one list. Tick what you don't need and <b>revoke in bulk</b>. Your token stays in this tab only; nothing is saved or sent anywhere but Dropbox. <a href="how-it-works.html" class="safe">What the code does →</a></p>
   </header>
 
   <div class="connect">
@@ -133,6 +134,7 @@ input[type=checkbox]:disabled{cursor:not-allowed;opacity:.3}
       <li>Open the <b>Permissions</b> tab, tick <code>sharing.read</code> and <code>sharing.write</code>, then <b>Submit</b>. Do this <i>before</i> generating the token.</li>
       <li>Back on <b>Settings</b>, under <i>OAuth 2 → Generated access token</i>, click <b>Generate</b> and paste it above. It expires after ~4 hours.</li>
       <li>When you're done, delete the app on that page to kill the token.</li>
+      <li>Not sure about pasting a token? <a href="how-it-works.html">Read exactly what this page does with it</a>, or <a href="#demo" onclick="setTimeout(() => location.reload())">try the demo</a> first.</li>
     </ol>
   </details>
   <div id="msg" class="msg"></div>
