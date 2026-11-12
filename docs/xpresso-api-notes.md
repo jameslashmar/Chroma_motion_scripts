@@ -93,6 +93,34 @@ An adapted version of Arttu Rautio's (aturtur) node line-up script reported "not
 
 If you hit this: print a per-graph diagnostic (`XPresso on '<host>': 61 nodes, 3 selected`) before doing any work. A non-zero selected count with nodes that don't move means the fault is in the alignment maths. Zero selected while nodes are clearly highlighted means `BIT_ACTIVE` is the wrong flag in 2026, and the next step is dumping `GetAllBits()` and `GetNBit()` for a known-selected node to find where the editor actually records selection.
 
+## Material graph nodes referenced from XPresso
+
+Worked out on 2026-11-12 against Cinema 4D 2027 in `c4dpy`, for `select_xpresso_reference-XP2OM.py`.
+
+**A Node Editor node referenced by XPresso is a stand-in `BaseList2D`.** The graph is not made of `BaseList2D`, so C4D keeps one stand-in per node or port that something classic points at (an animation track, an XPresso Object node). They live in the material's `Nodes` branch with type `300001078`. They are not `BaseMaterial`, `BaseObject` or `BaseTag`, so code that sorts link targets into those three drops them silently.
+
+```python
+mat = standin.GetMain()                       # the material
+for space_id, nimbus in mat.GetAllNimbusRefs():
+    node = nimbus.GetGraphNodeFromBaseList(standin)   # maxon.GraphNode
+    if node.GetGraph() == nimbus.GetGraph():          # see below
+        break
+```
+
+**`GetGraphNodeFromBaseList` ignores which nimbus you call it on.** It answers from the graph that owns the stand-in. A material with graphs in two node spaces returns the same valid node from both nimbus refs; only the `GetGraph()` comparison tells you which one to open. `nimbus.FindCorrespondingBaseList(node.GetPath()) == standin` is an equivalent check.
+
+**A port stand-in resolves to the port**, kind `8`, path `node<port`. `port.GetAncestor(maxon.NODE_KIND.NODE)` gives the node to select. The stand-in's `GetName()` is the port's label (`Scale`), and a node's label is `node.GetValue(maxon.EffectiveName)`.
+
+**Selecting needs a transaction.** `maxon.GraphModelHelper.SelectNode(node)` outside `graph.BeginTransaction()` raises `No current transaction for modification of NodesGraphModel`.
+
+**Opening the editor:** `nimbus.OpenInEditor()`, optionally with the `NodePath` of a group. Framing is command `465002307` (Frame Selected) from the Node Editor block; `465002308` is Center Selected.
+
+**The method names in older posts are wrong for 2027.** There is no `FindOrCreateBaseList`; it is `FindOrCreateCorrespondingBaseList` / `FindCorrespondingBaseList`.
+
+**Legacy Redshift shader graphs are XPresso graphs**, so the link is an ordinary `GvNode`: `node.GetNodeMaster().GetOwner()` is the material, selection is `BIT_ACTIVE`, and the editor opens with `c4d.CallButton(mat, c4d.REDSHIFT_GRAPH_BUTTON_EDIT)`. Redshift registers no command for it. In `c4dpy` the root has no shape container until the graph has been opened in a GUI, so the view transform can't be read headless.
+
+**Not yet confirmed in the GUI:** whether Frame Selected is accepted straight after `OpenInEditor` from a script, whether `OpenInEditor(group_path)` enters a group, and whether the 102/103/104 view transform applies to the legacy Redshift editor as it does to XPresso. The script reports rather than fails on each.
+
 ## Redshift materials
 
 A Redshift branch reached through `redshift.GetRSMaterialNodeMaster()` only supports legacy RS materials. Node-space Redshift materials return `None` — report that rather than failing silently. Supporting them properly means going through the `maxon` nodes API, which is a separate piece of work.

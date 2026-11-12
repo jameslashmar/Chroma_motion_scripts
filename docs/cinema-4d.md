@@ -46,6 +46,18 @@ The reverse lookup. Select node(s) in the XPresso editor, run the script, and it
 
 It expands collapsed hierarchy on the way, so the target is actually visible on screen rather than selected somewhere inside a folded group. Handles multiple selected nodes across multiple graphs at once, de-duplicates targets, and prints the full path of everything it selected.
 
+**Material graph nodes.** When the XPresso node references a node *inside* a material — what you get by dragging a node from the Node Editor into XPresso to drive one of its ports — the script selects the material, opens its graph, and selects and frames that node. A reference to a port selects the node the port belongs to. This works for any Node Editor material (Redshift, Standard) and for legacy Redshift shader graphs, which open in their own editor. A node that references a whole material opens that material's graph too.
+
+Where several graphs are referenced, every node is selected in its own graph and the first graph is the one shown. The switches are at the top of the script:
+
+```python
+OPEN_MATERIAL_GRAPH = True            # False: select only, open nothing
+FRAME_NODE = True                     # frame the node once the graph is open
+OPEN_GRAPH_FOR_PLAIN_MATERIAL = True  # a whole-material reference opens its graph
+```
+
+<sub>How an XPresso link maps back to a graph node: [docs/xpresso-api-notes.md](xpresso-api-notes.md#material-graph-nodes-referenced-from-xpresso).</sub>
+
 ### `probe_xpresso_view.py`, `probe_xpresso_commands.py` — diagnostics
 
 Not tools, but the instruments that worked the view transform out, kept because the same questions will come up again.
